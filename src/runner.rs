@@ -1,0 +1,68 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+//! Common analysis pipeline for processing a source map.
+
+use std::io::BufWriter;
+use std::path::PathBuf;
+
+use anyhow::Result;
+
+use crate::debug::report_memory;
+use crate::imports::ImportGraph;
+use crate::output::LifeGuardAnalysis;
+use crate::output::write_verbose;
+use crate::project;
+use crate::source_map::SourceMap;
+use crate::source_map::Sources;
+use crate::tracing::time;
+use crate::traits::SysInfoExt;
+
+/// Options for the analysis pipeline.
+pub struct Options {
+    pub verbose_output_path: Option<PathBuf>,
+    pub sorted_output: bool,
+}
+
+/// Process a source map and run the full analysis pipeline.
+pub fn process_source_map(
+    src_map: &SourceMap,
+    root_dir: &std::path::Path,
+    options: &Options,
+) -> Result<LifeGuardAnalysis> {
+    let sys_info = crate::pyrefly::sys_info::SysInfo::lg_default();
+
+    let sources = time("Building sources", || {
+        Sources::new(src_map, root_dir.to_path_buf())
+    });
+
+    let (import_graph, exports) = time("Creating import graph and exports", || {
+        ImportGraph::make_with_exports(&sources, &sys_info)
+    });
+    report_memory("After creating import graph and exports");
+
+    let analysis_output = time("Analyzing AST", || {
+        project::run_analysis(&sources, &exports, &import_graph, &sys_info)
+    });
+    report_memory("After analyzing AST");
+
+    if let Some(out) = &options.verbose_output_path {
+        println!("Writing verbose output to {}", out.display());
+        let verbose_file = std::fs::File::create(out)?;
+        let mut writer = BufWriter::new(verbose_file);
+        write_verbose(&mut writer, &analysis_output, &sources)?;
+    }
+
+    let lifeguard_output = time("Creating analysis object", || {
+        LifeGuardAnalysis::new(analysis_output, import_graph, &exports, options)
+    });
+
+    // Skip deallocation of large data structures since the process is about to exit.
+    std::mem::forget(exports);
+
+    Ok(lifeguard_output)
+}

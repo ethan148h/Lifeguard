@@ -1,0 +1,297 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+use std::str::FromStr;
+
+use ahash::AHashMap;
+use anyhow::Result;
+use pyrefly_python::module_name::ModuleName;
+use ruff_text_size::TextRange;
+use serde::Deserialize;
+use serde::Serialize;
+use serde_json;
+
+use crate::format::ErrorString;
+use crate::format::bare_string;
+use crate::module_parser::ParsedModule;
+
+// NOTE: This crate uses ModuleName throughout to store fully qualified names of all kinds.
+
+// Track side effects of various python statements.
+// We need to track side effects both at the module level (triggered by importing the module) and
+// at the function level (triggered by calling the function).
+#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EffectKind {
+    GlobalVarAssign,
+    ClassVarAssign,
+    GlobalVarMutation,
+    DecoratorCall,
+    ImportedDecoratorCall,
+    ImplicitImport,
+    ImportedVarMutation,
+    ImportedFunctionCall,
+    ImportedTypeAttr,
+    MethodCall,
+    ParamMethodCall,
+    FunctionCall,
+    ProhibitedFunctionCall,
+    UnknownDecoratorCall,
+    UnknownFunctionCall,
+    UnknownMethodCall,
+    UnknownValueBinaryOp,
+    UnknownObject,
+    Raise,
+    SetAttr,
+    SetSubscript,
+    CustomFinalizer,
+    ExecCall,
+    SysModulesAccess,
+    SubmoduleReExport,
+    ImportedVarArgument,
+    ImportedVarReassignment,
+    // For stub files. Update is_unsafe_stub_effect() when adding entries here.
+    NoEffects,
+    UnknownEffects,
+    Unsafe,
+    Mutation,
+    Dunder,
+}
+
+impl ErrorString for EffectKind {
+    fn error_string(&self) -> String {
+        bare_string(&self)
+    }
+}
+
+impl FromStr for EffectKind {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        // Convert s to a quoted string so that serde can parse it as json
+        let json = format!(r#""{:}""#, s);
+        Ok(serde_json::from_str(&json)?)
+    }
+}
+
+impl EffectKind {
+    // Is this effect a call where we can run the body to get transitive effects
+    pub fn is_runnable(&self) -> bool {
+        matches!(
+            self,
+            Self::FunctionCall
+                | Self::ImportedFunctionCall
+                | Self::DecoratorCall
+                | Self::ImportedDecoratorCall
+                | Self::MethodCall
+        )
+    }
+
+    // Regardless of reachability from a top-level statement, this effect anywhere in a module triggers the module's addition to the "load_imports_eagerly" set
+    pub fn requires_eager_loading_imports(&self) -> bool {
+        matches!(
+            self,
+            Self::CustomFinalizer | Self::ExecCall | Self::SysModulesAccess
+        )
+    }
+
+    pub fn is_unsafe_stub_effect(&self) -> bool {
+        matches!(self, Self::UnknownEffects | Self::Unsafe | Self::Mutation)
+    }
+}
+
+#[derive(Debug)]
+pub enum CallKind {
+    Function,
+    Method,
+    Decorator,
+}
+
+impl CallKind {
+    pub fn unknown_call_effect(&self) -> EffectKind {
+        match self {
+            Self::Function => EffectKind::UnknownFunctionCall,
+            Self::Method => EffectKind::UnknownMethodCall,
+            Self::Decorator => EffectKind::UnknownDecoratorCall,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
+pub struct CallData {
+    pub has_unsafe_args: bool,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
+pub enum EffectData {
+    None,
+    Call(CallData),
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
+pub struct Effect {
+    pub kind: EffectKind,
+    pub name: ModuleName,
+    pub range: TextRange,
+    pub data: EffectData,
+}
+
+impl Effect {
+    pub fn new(kind: EffectKind, name: ModuleName, range: TextRange) -> Self {
+        let data = EffectData::None;
+        Self {
+            kind,
+            name,
+            range,
+            data,
+        }
+    }
+
+    pub fn with_data(
+        kind: EffectKind,
+        name: ModuleName,
+        range: TextRange,
+        data: EffectData,
+    ) -> Self {
+        Self {
+            kind,
+            name,
+            range,
+            data,
+        }
+    }
+}
+
+/// Track effects based on scope.  Keys are either a module name or a fully qualified
+/// function/method name, corresponding to the scope within which the effect occurs.
+#[derive(Debug, Clone)]
+pub struct EffectTable {
+    table: AHashMap<ModuleName, Vec<Effect>>,
+}
+
+impl EffectTable {
+    pub fn empty() -> Self {
+        EffectTable {
+            table: AHashMap::new(),
+        }
+    }
+
+    pub fn new(table: AHashMap<ModuleName, Vec<Effect>>) -> Self {
+        EffectTable { table }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.table.is_empty()
+    }
+
+    pub fn insert(&mut self, name: ModuleName, effect: Effect) {
+        self.table.entry(name).or_default().push(effect);
+    }
+
+    pub fn get(&self, name: &ModuleName) -> Option<&Vec<Effect>> {
+        self.table.get(name)
+    }
+
+    /// Get an iterator over the names of all the scopes that have effects.
+    pub fn keys(&self) -> impl Iterator<Item = &ModuleName> {
+        self.table.keys()
+    }
+
+    /// Get an iterator over all effects, grouped by scope name.
+    pub fn values(&self) -> impl Iterator<Item = &Vec<Effect>> {
+        self.table.values()
+    }
+
+    /// Get an iterator over all effects, grouped and keyed by their scope name.
+    pub fn iter(&self) -> impl Iterator<Item = (&ModuleName, &Vec<Effect>)> {
+        self.table.iter()
+    }
+
+    /// Get a mutable iterator over all effects, grouped and keyed by their scope name.
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&ModuleName, &mut Vec<Effect>)> {
+        self.table.iter_mut()
+    }
+
+    /// Filter out any entries that don't pass the given predicate.
+    pub fn retain<F>(&mut self, f: F)
+    where
+        F: FnMut(&ModuleName, &mut Vec<Effect>) -> bool,
+    {
+        self.table.retain(f)
+    }
+
+    pub fn contains_key(&self, name: &ModuleName) -> bool {
+        self.table.contains_key(name)
+    }
+
+    pub fn merge(&mut self, other: &Self) {
+        for (name, effs) in &other.table {
+            if let Some(val) = self.table.get_mut(name) {
+                val.extend(effs);
+            } else {
+                self.table.insert(*name, effs.clone());
+            };
+        }
+    }
+
+    pub fn pretty_print(&self, module: &ParsedModule, file_contents: &str, show_expr: bool) {
+        // Sort scopes by name.  The current module is the most important and that will always show
+        // up first.  Following modules will _generally_ follow in order of scope depth, but for
+        // names like "current_scope.foo.bar" and "current_scope.foot" you might not get the exact
+        // order that you want.  That's okay, it's close enough.
+        let mut tuples: Vec<_> = self.table.iter().collect();
+        tuples.sort_by_key(|(scope, _)| scope.as_str());
+
+        for (scope, eff_set) in tuples {
+            // Sort effects by the start of their text range.
+            let mut effs: Vec<_> = eff_set.iter().collect();
+            effs.sort_by_key(|eff| eff.range.start());
+
+            println!("Scope: {}", scope.as_str());
+            for eff in effs {
+                println!(
+                    "    Line {}:",
+                    module.byte_to_line_number(eff.range.start().into())
+                );
+                println!("        Effect: {:?}", eff.kind);
+                if show_expr {
+                    if let Some(expr) = file_contents.get(eff.range.to_std_range()) {
+                        println!("        Expr: {}", expr);
+                    } else {
+                        println!("        Expr: <Error: Can't resolve range {:?}>", eff.range);
+                    }
+                }
+                if !eff.name.as_str().is_empty() {
+                    println!("        Name: {}", eff.name.as_str());
+                }
+                match eff.data {
+                    EffectData::None => {}
+                    EffectData::Call(call) => {
+                        println!("        UnsafeArgs: {}", call.has_unsafe_args);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_serialize_effect_kind() {
+        let out = &EffectKind::GlobalVarAssign.error_string();
+        assert_eq!(out, "global-var-assign");
+    }
+
+    #[test]
+    fn test_deserialize_effect_kind() {
+        let out = EffectKind::from_str("global-var-assign").unwrap();
+        assert_eq!(out, EffectKind::GlobalVarAssign);
+    }
+}
