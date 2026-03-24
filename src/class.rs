@@ -86,11 +86,6 @@ impl ClassTable {
         self.table
     }
 
-    // Merges `other` into `self`. Consumes `other`.
-    pub fn merge(&mut self, other: ClassTable) {
-        self.table.extend(other.table)
-    }
-
     pub fn contains(&self, name: &ModuleName) -> bool {
         self.table.contains_key(name)
     }

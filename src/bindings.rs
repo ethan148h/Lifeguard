@@ -131,7 +131,8 @@ impl BindingsTable {
         }
     }
 
-    pub fn pretty_print(&self) {
+    /// Used for debugging purposes.
+    pub(crate) fn pretty_print(&self) {
         for (k, v) in &self.bindings {
             println!("Scope: {}", k.as_str());
             for (name, val) in v {

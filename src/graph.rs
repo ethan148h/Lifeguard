@@ -97,7 +97,7 @@ impl Graph {
     }
 
     /// Check if an edge exists in the graph.
-    pub fn has_edge(&self, from: &ModuleName, to: &ModuleName) -> bool {
+    pub(crate) fn has_edge(&self, from: &ModuleName, to: &ModuleName) -> bool {
         let Some(&p) = self.nodes.get(from) else {
             return false;
         };

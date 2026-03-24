@@ -217,18 +217,18 @@ impl EffectTable {
     }
 
     /// Filter out any entries that don't pass the given predicate.
-    pub fn retain<F>(&mut self, f: F)
+    pub(crate) fn retain<F>(&mut self, f: F)
     where
         F: FnMut(&ModuleName, &mut Vec<Effect>) -> bool,
     {
         self.table.retain(f)
     }
 
-    pub fn contains_key(&self, name: &ModuleName) -> bool {
+    pub(crate) fn contains_key(&self, name: &ModuleName) -> bool {
         self.table.contains_key(name)
     }
 
-    pub fn merge(&mut self, other: &Self) {
+    pub(crate) fn merge(&mut self, other: &Self) {
         for (name, effs) in &other.table {
             if let Some(val) = self.table.get_mut(name) {
                 val.extend(effs);
