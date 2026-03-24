@@ -127,10 +127,17 @@ fn resolve_source_map(raw: RawSourceMap) -> SourceMap {
         }
         // Guard against the module key in the sourcedb not just being the suffix
         // of the full path.
-        // TODO(T257095571): We need to surface the error where the path does not convert to a module name.
         let mod_name = match ModuleName::from_relative_path(module_path.as_ref()) {
             Ok(name) => name,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::warn!(
+                    "Skipping module path '{}' (file '{}'): {}",
+                    module_path,
+                    full_path.display(),
+                    e
+                );
+                continue;
+            }
         };
         let priority = source_priority(&full_path);
         let dominated = priorities.get(&mod_name).is_some_and(|&p| p <= priority);
