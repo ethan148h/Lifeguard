@@ -76,20 +76,21 @@ impl<'a> Builtins<'a> {
         let fname = func.as_var_name()?;
         let qname = ModuleName::builtins().append(&fname);
         if self.is_prohibited_call(&fname) {
-            // TODO: Do we need to replace this with effects in the stub file? We could regard a
-            // stub file function as purely either safe or unsafe to call, and emit or not emit an
-            // effect here, thereby saving us from having to run the function call in project.rs
             let eff = Effect::new(EffectKind::ProhibitedFunctionCall, qname, func.range());
             Some(eff)
         } else if self.contains(&fname) {
-            // TODO: Since we have determined this is safe, we should not even emit a
-            // `function-call` effect, since that will just be checked in project.rs and return
-            // nothing (effectively doing unneeded work).
-            let eff = Effect::new(EffectKind::FunctionCall, qname, func.range());
-            Some(eff)
+            // Known safe builtin; skip emitting any effect to avoid
+            // unnecessary work checking it in project.rs.
+            None
         } else {
             None
         }
+    }
+
+    /// Returns true if the given function name is a known builtin (safe or unsafe).
+    pub fn is_known_builtin(&self, func: &Expr) -> bool {
+        func.as_var_name()
+            .is_some_and(|fname| self.contains(&fname) || self.is_prohibited_call(&fname))
     }
 }
 

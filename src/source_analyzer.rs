@@ -338,10 +338,10 @@ impl<'a> SourceAnalyzer<'a> {
             let eff = Effect::new(EffectKind::ExecCall, fname, func.range());
             self.add_effect(eff, output);
         } else if let Some(eff) = builtins.call_effect(func) {
-            // TODO: Maintain existing behaviour for now and do not add effects for safe builtins
-            if matches!(eff.kind, EffectKind::ProhibitedFunctionCall) {
-                self.add_effect(eff, output);
-            }
+            // Prohibited builtin call (e.g. eval, open)
+            self.add_effect(eff, output);
+        } else if builtins.is_known_builtin(func) {
+            // Known safe builtin - no effect needed
         } else {
             // This is not a builtin and we haven't resolved it, so mark it as unknown
             let eff_kind = match call_kind {
