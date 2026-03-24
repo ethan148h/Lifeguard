@@ -47,6 +47,22 @@ pub type SafetyMap = DashMap<ModuleName, SafetyResult>;
 pub type SideEffectMap = AHashMap<ModuleName, AHashSet<ModuleName>>;
 type ScopeImportsMap = AHashMap<ModuleName, AHashMap<ModuleName, AHashSet<ModuleName>>>;
 
+/// Shared immutable context for per-module analysis.
+struct AnalysisContext<'a> {
+    exports: &'a Exports,
+    import_graph: &'a ImportGraph,
+    stubs: &'a Stubs,
+    sys_info: &'a SysInfo,
+}
+
+/// Shared immutable context for computing implicit imports.
+struct ImplicitImportContext<'a> {
+    analysis_map: &'a AnalysisMap,
+    additional_called_imports: &'a ScopeImportsMap,
+    init_module_map: &'a HashMap<ModuleName, ModuleName>,
+    import_graph: &'a ImportGraph,
+}
+
 // Merge effects from all modules into a single effect table
 //
 // If a function contains nested scopes, add all effects from within the function body to the
@@ -506,15 +522,12 @@ fn build_init_module_map(analysis_map: &AnalysisMap) -> HashMap<ModuleName, Modu
 
 fn compute_implicit_imports_for_module(
     curr_module: &ModuleName,
-    analysis_map: &AnalysisMap,
-    additional_called_imports: &ScopeImportsMap,
-    init_module_map: &HashMap<ModuleName, ModuleName>,
-    import_graph: &ImportGraph,
+    ctx: &ImplicitImportContext,
 ) -> Vec<ModuleName> {
     let set_binding = AHashSet::new();
     let map_binding = AHashMap::new();
 
-    let output = analysis_map.get(curr_module).unwrap();
+    let output = ctx.analysis_map.get(curr_module).unwrap();
     let pending_imports_map = &output.module_effects.pending_imports;
     let called_imports_map = &output.module_effects.called_imports;
     let called_functions = &output.module_effects.called_functions;
@@ -526,10 +539,11 @@ fn compute_implicit_imports_for_module(
     let called_in_imported_set: AHashSet<ModuleName> = all_pending_imports
         .iter()
         .filter_map(|pending_module| {
-            let pending_module_name = init_module_map
+            let pending_module_name = ctx
+                .init_module_map
                 .get(pending_module)
                 .unwrap_or(pending_module);
-            additional_called_imports
+            ctx.additional_called_imports
                 .get(pending_module_name)
                 .and_then(|m| m.get(pending_module_name))
         })
@@ -544,10 +558,12 @@ fn compute_implicit_imports_for_module(
     let mut all_called_fn_imports: AHashSet<ModuleName> = AHashSet::new();
 
     for pending_module in all_pending_imports {
-        let pending_module_name = init_module_map
+        let pending_module_name = ctx
+            .init_module_map
             .get(pending_module)
             .unwrap_or(pending_module);
-        let module_pending_imports = analysis_map
+        let module_pending_imports = ctx
+            .analysis_map
             .get(pending_module_name)
             .map(|output| &output.module_effects.pending_imports)
             .unwrap_or(&map_binding);
@@ -566,7 +582,7 @@ fn compute_implicit_imports_for_module(
         // Accumulate called_function_imports
         all_called_fn_imports.extend(get_called_function_imports(
             pending_module_name,
-            analysis_map,
+            ctx.analysis_map,
         ));
     }
 
@@ -583,12 +599,15 @@ fn compute_implicit_imports_for_module(
                     .is_some_and(|imports| imports.contains(curr_import))
             {
                 non_implicit_imports.insert(*curr_import);
-                non_implicit_imports.extend(get_parent_module_imports(curr_import, analysis_map));
+                non_implicit_imports
+                    .extend(get_parent_module_imports(curr_import, ctx.analysis_map));
             } else if called_functions.contains(curr_import) {
                 // mark function as loaded
                 non_implicit_imports.insert(*curr_import);
-                non_implicit_imports
-                    .extend(get_imports_in_function_module(curr_import, analysis_map));
+                non_implicit_imports.extend(get_imports_in_function_module(
+                    curr_import,
+                    ctx.analysis_map,
+                ));
             } else {
                 has_unresolved_imports = true;
 
@@ -598,7 +617,7 @@ fn compute_implicit_imports_for_module(
                 }
 
                 // Check if any parent of curr_import is a pending module.
-                if is_called_attribute_loaded(curr_import, all_pending_imports, import_graph) {
+                if is_called_attribute_loaded(curr_import, all_pending_imports, ctx.import_graph) {
                     non_implicit_imports.insert(*curr_import);
                 }
 
@@ -630,17 +649,18 @@ fn get_implicit_imports(analysis_map: &mut AnalysisMap, import_graph: &ImportGra
     // we can't modify analysis_map again so using a global map
     let additional_called_imports = get_additional_called_imports(analysis_map);
 
+    let ctx = ImplicitImportContext {
+        analysis_map,
+        additional_called_imports: &additional_called_imports,
+        init_module_map: &init_module_map,
+        import_graph,
+    };
+
     // Collect implicit imports for each module in parallel
     let implicit_imports_per_module: Vec<(ModuleName, Vec<ModuleName>)> = analysis_map
         .par_iter()
         .map(|(curr_module, _)| {
-            let implicit_imports = compute_implicit_imports_for_module(
-                curr_module,
-                analysis_map,
-                &additional_called_imports,
-                &init_module_map,
-                import_graph,
-            );
+            let implicit_imports = compute_implicit_imports_for_module(curr_module, &ctx);
             (*curr_module, implicit_imports)
         })
         .collect();
@@ -656,13 +676,16 @@ fn get_implicit_imports(analysis_map: &mut AnalysisMap, import_graph: &ImportGra
 fn analyze_module(
     mod_name: ModuleName,
     ast_result: &AstResult,
-    exports: &Exports,
-    import_graph: &ImportGraph,
-    stubs: &Stubs,
-    sys_info: &SysInfo,
+    ctx: &AnalysisContext,
 ) -> Option<(ModuleName, AnalyzedModule)> {
     let module = ast_result.as_parsed().ok()?;
-    let output = analyzer::analyze(module, exports, import_graph, stubs, sys_info);
+    let output = analyzer::analyze(
+        module,
+        ctx.exports,
+        ctx.import_graph,
+        ctx.stubs,
+        ctx.sys_info,
+    );
     Some((mod_name, output))
 }
 
@@ -673,20 +696,18 @@ pub fn analyze_all(
     import_graph: &ImportGraph,
     sys_info: &SysInfo,
 ) -> AnalysisMap {
-    let stubs = sources.stubs();
+    let ctx = AnalysisContext {
+        exports,
+        import_graph,
+        stubs: sources.stubs(),
+        sys_info,
+    };
     let mut analysis_map = time("  Building analysis map", || {
         sources
             .module_names_par_iter()
             .filter_map(|mod_name| {
                 let ast_result = sources.parse(mod_name)?;
-                analyze_module(
-                    *mod_name,
-                    &ast_result,
-                    exports,
-                    import_graph,
-                    stubs,
-                    sys_info,
-                )
+                analyze_module(*mod_name, &ast_result, &ctx)
             })
             .collect()
     });

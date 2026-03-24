@@ -246,13 +246,13 @@ impl LifeGuardAnalysis {
             }
         });
 
-        add_cycle_deps(
-            &all_cycles,
-            &import_graph,
-            &output.lazy_eligible,
-            &passing_modules,
-            &cycle_children,
-        );
+        let cycle_ctx = CycleDepsContext {
+            import_graph: &import_graph,
+            lazy_eligible: &output.lazy_eligible,
+            passing_modules: &passing_modules,
+            cycle_children: &cycle_children,
+        };
+        add_cycle_deps(&all_cycles, &cycle_ctx);
 
         // Add implicit imports to lazy_eligible dict.
         for (module_name, implicit_imports_set) in implicit_imports {
@@ -372,6 +372,14 @@ fn collect_cycles(
         .collect()
 }
 
+/// Shared context for cycle dependency propagation.
+struct CycleDepsContext<'a> {
+    import_graph: &'a ImportGraph,
+    lazy_eligible: &'a DashMap<ModuleName, SmallSet<ModuleName>>,
+    passing_modules: &'a SmallSet<ModuleName>,
+    cycle_children: &'a DashMap<ModuleName, Vec<ModuleName>>,
+}
+
 /// Add cycle dependencies to the lazy_eligible dict and propagate to child modules.
 /// For each module in a cycle, only its *direct imports* that are also in the cycle
 /// are added as lazy_eligible deps, rather than all cycle members.
@@ -380,36 +388,31 @@ fn collect_cycles(
 /// Propagation to children is needed because CPython's `from X import Y` lazy_eligible check
 /// constructs "X.Y" and checks that against the lazy_eligible dict. If X has cycle deps but
 /// X.Y doesn't, the import would be incorrectly marked as lazy.
-fn add_cycle_deps(
-    all_cycles: &[Vec<ModuleName>],
-    import_graph: &ImportGraph,
-    lazy_eligible: &DashMap<ModuleName, SmallSet<ModuleName>>,
-    passing_modules: &SmallSet<ModuleName>,
-    cycle_children: &DashMap<ModuleName, Vec<ModuleName>>,
-) {
+fn add_cycle_deps(all_cycles: &[Vec<ModuleName>], ctx: &CycleDepsContext) {
     for cycle_modules in all_cycles {
         let cycle_set: AHashSet<ModuleName> = cycle_modules.iter().cloned().collect();
         for module_name in cycle_modules {
-            if !passing_modules.contains(module_name) {
+            if !ctx.passing_modules.contains(module_name) {
                 continue;
             }
-            let cycle_imports: SmallSet<ModuleName> = import_graph
+            let cycle_imports: SmallSet<ModuleName> = ctx
+                .import_graph
                 .get_imports(module_name)
                 .filter(|m| cycle_set.contains(m))
                 .cloned()
                 .collect();
 
             if !cycle_imports.is_empty() {
-                lazy_eligible
+                ctx.lazy_eligible
                     .entry(*module_name)
                     .or_default()
                     .extend(cycle_imports.iter().cloned());
 
                 // Propagate to direct children of this cycle module
-                if let Some(children) = cycle_children.get(module_name) {
+                if let Some(children) = ctx.cycle_children.get(module_name) {
                     for child in children.value() {
-                        if passing_modules.contains(child) {
-                            lazy_eligible
+                        if ctx.passing_modules.contains(child) {
+                            ctx.lazy_eligible
                                 .entry(*child)
                                 .or_default()
                                 .extend(cycle_imports.iter().cloned());
