@@ -86,7 +86,6 @@ impl DefinitionTable {
     }
 
     // Look up a name in a chain of parent scopes.
-    // TODO: Implement python's full LEGB name resolution rule.
     fn resolve_name(&self, cursor: &Cursor, name: Name) -> Option<ResolvedName<'_>> {
         for scope in cursor.ascending_scope_names_iter() {
             if let Some(def) = self.get(&scope, &name) {
@@ -98,12 +97,6 @@ impl DefinitionTable {
                 });
             }
         }
-        // We have not resolved the name; check in the builtins
-        self.lookup_builtins(&name)
-    }
-
-    fn lookup_builtins(&self, _name: &Name) -> Option<ResolvedName<'_>> {
-        // TODO(T228941537): Implement this!
         None
     }
 
@@ -192,9 +185,29 @@ impl<'a> ModuleInfo<'a> {
         }
     }
 
-    // Call some functions from self.definitions directly on self.
+    // Resolve a name through the scope chain, falling back to builtins.
     pub fn resolve(&self, cursor: &Cursor, value: &Expr) -> Option<ResolvedName<'_>> {
-        self.definitions.resolve(cursor, value)
+        self.definitions
+            .resolve(cursor, value)
+            .or_else(|| self.resolve_builtins(value))
+    }
+
+    // Look up a name in the builtins module definitions.
+    fn resolve_builtins(&self, value: &Expr) -> Option<ResolvedName<'_>> {
+        let name = value.base_name()?;
+        let builtins_module = self.stubs.get(&ModuleName::builtins())?;
+        let builtins_scope = ModuleName::builtins();
+        let defs = builtins_module
+            .definitions
+            .definitions
+            .get(&builtins_scope)?;
+        let def = defs.definitions.get(&name)?;
+        Some(ResolvedName {
+            name,
+            definition: def,
+            scope: builtins_scope,
+            scope_definitions: defs,
+        })
     }
 
     pub fn is_imported(&self, cursor: &Cursor, value: &Expr) -> bool {
@@ -512,6 +525,7 @@ mod tests {
     use super::*;
     use crate::module_parser::parse_source;
     use crate::test_lib::assert_str_keys;
+    use crate::traits::AstExt;
     use crate::traits::SysInfoExt;
 
     #[test]
@@ -625,5 +639,93 @@ def f(x, y):
         let scope = ModuleName::from_str("test.f");
         let defs = info.definitions.definitions.get(&scope).unwrap();
         assert_str_keys(defs.definitions.keys(), vec!["x", "y"]);
+    }
+
+    fn make_module_info_and_resolve(
+        code: &str,
+        scopes: &[&str],
+        name: &str,
+    ) -> Option<(ModuleName, bool)> {
+        use pyrefly_python::ast::Ast;
+
+        let mod_name = ModuleName::from_str("test");
+        let parsed_module = parse_source(code, mod_name, false);
+        let import_graph = ImportGraph::new();
+        let stubs = Stubs::new();
+        let sys_info = SysInfo::lg_default();
+        let exports = Exports::new(&parsed_module, &import_graph, &sys_info);
+        let info = ModuleInfo::new(&parsed_module, &exports, &import_graph, &stubs, &sys_info);
+
+        let mut cursor = Cursor::new();
+        for (i, scope_name) in scopes.iter().enumerate() {
+            if i == 0 {
+                cursor.enter_module_scope(&ModuleName::from_str(scope_name));
+            } else if scope_name.starts_with(char::is_uppercase) {
+                cursor.enter_class_scope_name(Name::new(scope_name));
+            } else {
+                cursor.enter_function_scope_name(Name::new(scope_name));
+            }
+        }
+
+        // Parse a trivial expression to get a properly constructed Expr::Name
+        let (ast, _) = Ast::parse_py(name);
+        let stmt = ast.body.first()?;
+        let Stmt::Expr(expr_stmt) = stmt else {
+            return None;
+        };
+        let res = info.resolve(&cursor, &expr_stmt.value)?;
+        Some((res.scope, res.definition.is_import()))
+    }
+
+    #[test]
+    fn test_builtin_name_resolves() {
+        // `list` is not imported or defined, but should resolve to builtins
+        let code = "x = 1\n";
+        let result = make_module_info_and_resolve(code, &["test"], "list");
+        assert!(result.is_some(), "builtin 'list' should resolve");
+        let (scope, is_import) = result.unwrap();
+        assert_eq!(scope, ModuleName::builtins());
+        assert!(!is_import);
+    }
+
+    #[test]
+    fn test_builtin_int_resolves() {
+        let code = "x = 1\n";
+        let result = make_module_info_and_resolve(code, &["test"], "int");
+        assert!(result.is_some(), "builtin 'int' should resolve");
+        assert_eq!(result.unwrap().0, ModuleName::builtins());
+    }
+
+    #[test]
+    fn test_local_shadows_builtin() {
+        // A local definition of `list` should take precedence over the builtin
+        let code = "list = [1, 2, 3]\n";
+        let result = make_module_info_and_resolve(code, &["test"], "list");
+        assert!(result.is_some(), "'list' should resolve");
+        let (scope, _) = result.unwrap();
+        assert_eq!(
+            scope,
+            ModuleName::from_str("test"),
+            "local 'list' should shadow builtin"
+        );
+    }
+
+    #[test]
+    fn test_imported_name_not_affected_by_builtins() {
+        // An imported name should still resolve as an import, not as a builtin
+        let code = "from foo import bar\n";
+        let result = make_module_info_and_resolve(code, &["test"], "bar");
+        assert!(result.is_some());
+        let (scope, is_import) = result.unwrap();
+        assert_eq!(scope, ModuleName::from_str("test"));
+        assert!(is_import, "'bar' should be an import");
+    }
+
+    #[test]
+    fn test_nonexistent_name_does_not_resolve() {
+        // A name that's not a builtin and not defined should not resolve
+        let code = "x = 1\n";
+        let result = make_module_info_and_resolve(code, &["test"], "not_a_real_name");
+        assert!(result.is_none());
     }
 }

@@ -455,6 +455,13 @@ impl<'a> SourceAnalyzer<'a> {
             return None;
         };
 
+        // If the name resolved to a builtin, delegate to check_unresolved_call
+        // which has special handling for exec, getattr, setattr, etc.
+        if res.scope == ModuleName::builtins() {
+            self.check_unresolved_call(func, args, output, None);
+            return None;
+        }
+
         let Some(call_name) = func.full_name() else {
             // We have a base name but no full name (e.g. `x.f[i]()`)
             self.unknown_function_name(func, output);
