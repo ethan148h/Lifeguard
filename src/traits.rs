@@ -95,6 +95,25 @@ impl DefinitionsExt for Definitions {
     }
 }
 
+pub struct ParentIter<'a> {
+    s: &'a str,
+    dot_positions: Vec<usize>,
+    index: usize,
+}
+
+impl Iterator for ParentIter<'_> {
+    type Item = ModuleName;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.dot_positions.len() {
+            return None;
+        }
+        let pos = self.dot_positions[self.dot_positions.len() - 1 - self.index];
+        self.index += 1;
+        Some(ModuleName::from_str(&self.s[..pos]))
+    }
+}
+
 pub trait ModuleNameExt {
     fn concat(&self, other: &Self) -> Self;
 
@@ -103,6 +122,10 @@ pub trait ModuleNameExt {
     fn split_attr(&self) -> Option<(Self, Name)>
     where
         Self: Sized;
+
+    /// Iterate over parent module names from longest to shortest.
+    /// For "a.b.c.d", yields "a.b.c", "a.b", "a".
+    fn iter_parents(&self) -> ParentIter<'_>;
 }
 
 impl ModuleNameExt for ModuleName {
@@ -124,6 +147,16 @@ impl ModuleNameExt for ModuleName {
     fn split_attr(&self) -> Option<(Self, Name)> {
         let (obj, attr) = self.as_str().rsplit_once(".")?;
         Some((Self::from_str(obj), Name::new(attr)))
+    }
+
+    fn iter_parents(&self) -> ParentIter<'_> {
+        let s = self.as_str();
+        let dot_positions: Vec<usize> = s.match_indices('.').map(|(i, _)| i).collect();
+        ParentIter {
+            s,
+            dot_positions,
+            index: 0,
+        }
     }
 }
 

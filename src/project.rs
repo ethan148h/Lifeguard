@@ -341,22 +341,14 @@ fn get_imports_in_function_module(
     curr_import: &ModuleName,
     analysis_map: &AnalysisMap,
 ) -> AHashSet<ModuleName> {
-    let import_parts: Vec<&str> = curr_import.as_str().split('.').collect();
     let mut function_pending_import = AHashSet::new();
     let mut function_called_import = AHashSet::new();
     let mut other_module_level_import = AHashSet::new();
 
-    if import_parts.len() <= 1 {
-        return AHashSet::new();
-    }
-
     let mut additional_called_imports = AHashSet::new();
 
     // For curr_import = "foo.bar.baz.func", check for module in order: foo.bar.baz, foo.bar, foo
-    for i in (1..import_parts.len()).rev() {
-        let parent_parts = &import_parts[..i];
-        let parent_name = ModuleName::from_parts(parent_parts.to_vec());
-        // Check if the parent_name is imported in the current scope or at module level
+    for parent_name in curr_import.iter_parents() {
         if let Some(output) = analysis_map.get(&parent_name) {
             let module_pending_imports = &output.module_effects.pending_imports;
             // Check for imports in parent_name module
@@ -394,13 +386,7 @@ fn is_called_attribute_loaded(
     if import_graph.contains(curr_import) {
         return false;
     }
-    let import_parts: Vec<&str> = curr_import.as_str().split('.').collect();
-    if import_parts.len() <= 1 {
-        return false;
-    }
-    for i in (1..import_parts.len()).rev() {
-        let parent_parts = &import_parts[..i];
-        let parent_name = ModuleName::from_parts(parent_parts.to_vec());
+    for parent_name in curr_import.iter_parents() {
         if all_pending_imports.contains(&parent_name) {
             return true;
         }
