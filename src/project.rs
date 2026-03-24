@@ -801,13 +801,11 @@ impl ProjectInfo {
             }
             let _ = self.check_load_imports_eagerly(mod_name, result, &state);
             let _ = self.collect_implicit_imports(mod_name, result, &state);
-        });
 
-        // Mark re-exported submodules as failing: when a module re-exports from
-        // its own submodule via __all__, the submodule must be marked unsafe so
-        // it is excluded from the LAZY_ELIGIBLE dict. Otherwise CPython's lazy import
-        // can resolve the name to the submodule object instead of the attribute.
-        for (_, result) in self.analysis_map.iter() {
+            // Mark re-exported submodules as failing: when a module re-exports from
+            // its own submodule via __all__, the submodule must be marked unsafe so
+            // it is excluded from the LAZY_ELIGIBLE dict. Otherwise CPython's lazy import
+            // can resolve the name to the submodule object instead of the attribute.
             for effs in result.module_effects.effects.values() {
                 for eff in effs {
                     if eff.kind == EffectKind::SubmoduleReExport {
@@ -818,7 +816,7 @@ impl ProjectInfo {
                     }
                 }
             }
-        }
+        });
 
         state.into_safety_map()
     }
