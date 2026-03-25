@@ -75,3 +75,136 @@ impl SafetyResult {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use ruff_text_size::TextRange;
+
+    use super::*;
+    use crate::errors::ErrorKind;
+
+    fn make_error(kind: ErrorKind) -> SafetyError {
+        SafetyError::new(kind, "test".to_owned(), TextRange::default())
+    }
+
+    #[test]
+    fn new_module_safety_is_safe() {
+        let safety = ModuleSafety::new();
+        assert!(safety.is_safe(), "fresh ModuleSafety should be safe");
+        assert!(
+            !safety.has_implicit_imports(),
+            "fresh ModuleSafety should have no implicit imports"
+        );
+        assert!(
+            !safety.should_load_imports_eagerly(),
+            "fresh ModuleSafety should not load imports eagerly"
+        );
+    }
+
+    #[test]
+    fn add_error_makes_unsafe() {
+        let mut safety = ModuleSafety::new();
+        safety.add_error(make_error(ErrorKind::UnsafeFunctionCall));
+        assert!(!safety.is_safe(), "should be unsafe after adding an error");
+        assert_eq!(safety.errors.len(), 1);
+    }
+
+    #[test]
+    fn add_force_import_override_with_valid_kind() {
+        let mut safety = ModuleSafety::new();
+        safety.add_force_import_override(make_error(ErrorKind::ExecCall));
+        assert!(
+            safety.should_load_imports_eagerly(),
+            "should load imports eagerly after adding ExecCall override"
+        );
+        assert_eq!(safety.force_imports_eager_overrides.len(), 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "requires_eager_loading_imports")]
+    fn add_force_import_override_panics_with_wrong_kind() {
+        let mut safety = ModuleSafety::new();
+        safety.add_force_import_override(make_error(ErrorKind::UnsafeFunctionCall));
+    }
+
+    #[test]
+    fn add_implicit_imports_sets_flag() {
+        let mut safety = ModuleSafety::new();
+        let mut implicits = AHashSet::new();
+        implicits.insert(ModuleName::from_str("foo.bar"));
+        safety.add_implicit_imports(&implicits);
+        assert!(
+            safety.has_implicit_imports(),
+            "should have implicit imports after adding"
+        );
+        assert_eq!(safety.implicit_imports.len(), 1);
+    }
+
+    #[test]
+    fn add_implicit_imports_empty_set() {
+        let mut safety = ModuleSafety::new();
+        safety.add_implicit_imports(&AHashSet::new());
+        assert!(
+            !safety.has_implicit_imports(),
+            "should have no implicit imports after adding empty set"
+        );
+    }
+
+    #[test]
+    fn safety_result_ok_as_safety() {
+        let result = SafetyResult::Ok(ModuleSafety::new());
+        assert!(
+            result.as_safety().is_some(),
+            "Ok variant should return Some from as_safety"
+        );
+    }
+
+    #[test]
+    fn safety_result_ok_as_safety_mut() {
+        let mut result = SafetyResult::Ok(ModuleSafety::new());
+        let safety = result.as_safety_mut().unwrap();
+        safety.add_error(make_error(ErrorKind::ExecCall));
+        assert!(
+            !result.as_safety().unwrap().is_safe(),
+            "mutation through as_safety_mut should be visible"
+        );
+    }
+
+    #[test]
+    fn safety_result_analysis_error_as_safety_returns_none() {
+        let result = SafetyResult::AnalysisError(anyhow::anyhow!("parse failure"));
+        assert!(
+            result.as_safety().is_none(),
+            "AnalysisError should return None from as_safety"
+        );
+    }
+
+    #[test]
+    fn safety_result_analysis_error_as_safety_mut_returns_none() {
+        let mut result = SafetyResult::AnalysisError(anyhow::anyhow!("parse failure"));
+        assert!(
+            result.as_safety_mut().is_none(),
+            "AnalysisError should return None from as_safety_mut"
+        );
+    }
+
+    #[test]
+    fn multiple_errors_accumulate() {
+        let mut safety = ModuleSafety::new();
+        safety.add_error(make_error(ErrorKind::UnsafeFunctionCall));
+        safety.add_error(make_error(ErrorKind::UnhandledException));
+        safety.add_force_import_override(make_error(ErrorKind::CustomFinalizer));
+        safety.add_force_import_override(make_error(ErrorKind::SysModulesAccess));
+        assert_eq!(safety.errors.len(), 2);
+        assert_eq!(safety.force_imports_eager_overrides.len(), 2);
+    }
+
+    #[test]
+    fn all_eager_loading_kinds_accepted() {
+        let mut safety = ModuleSafety::new();
+        safety.add_force_import_override(make_error(ErrorKind::CustomFinalizer));
+        safety.add_force_import_override(make_error(ErrorKind::ExecCall));
+        safety.add_force_import_override(make_error(ErrorKind::SysModulesAccess));
+        assert_eq!(safety.force_imports_eager_overrides.len(), 3);
+    }
+}
