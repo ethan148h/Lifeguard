@@ -15,7 +15,8 @@ use starlark_map::small_map::SmallMap;
 use tar::Archive;
 use zstd::stream::read::Decoder;
 
-const BUNDLED_STUBS_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/lifeguard_stubs.tar.zst"));
+const BUNDLED_STUBS_BYTES: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/lifeguard_stubs.tar.zst"));
 
 fn is_stub_directory(component: &Option<Component>) -> bool {
     component
