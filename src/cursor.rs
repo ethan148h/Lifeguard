@@ -150,16 +150,17 @@ impl Cursor {
     /// Get an iterator over scopes following Python's LEGB rule:
     /// Local -> Enclosing functions (skipping class scopes) -> Global (module scope).
     /// Builtins are handled separately.
-    pub fn legb_scope_names_iter(&self) -> impl Iterator<Item = ModuleName> + '_ {
+    pub fn legb_scope_names_iter(&self) -> impl Iterator<Item = ModuleName> {
         let len = self.scopes.len();
-        let mut indices = Vec::with_capacity(len);
+        let mut names = Vec::with_capacity(len);
 
         if len > 0 {
             // L: current (innermost) scope
-            indices.push(len - 1);
+            names.push(self.qualified_scopes[len - 1]);
 
             // E: walk outward, skipping class scopes, until we hit module scope
             let mut in_function = self.scopes[len - 1].kind == ScopeKind::Function;
+            let mut included_module = false;
             for i in (1..len - 1).rev() {
                 match self.scopes[i].kind {
                     ScopeKind::Class => {
@@ -168,26 +169,27 @@ impl Cursor {
                         // for nested functions). But if we're in a class scope directly
                         // (e.g. class body referencing class-level vars), include it.
                         if !in_function {
-                            indices.push(i);
+                            names.push(self.qualified_scopes[i]);
                         }
                     }
                     ScopeKind::Function => {
-                        indices.push(i);
+                        names.push(self.qualified_scopes[i]);
                         in_function = true;
                     }
                     ScopeKind::Module => {
-                        indices.push(i);
+                        names.push(self.qualified_scopes[i]);
+                        included_module = true;
                     }
                 }
             }
 
             // G: module scope (index 0) - always included if not already
-            if len > 1 && !indices.contains(&0) {
-                indices.push(0);
+            if len > 1 && !included_module {
+                names.push(self.qualified_scopes[0]);
             }
         }
 
-        indices.into_iter().map(move |i| self.qualified_scopes[i])
+        names.into_iter()
     }
 
     /// Get a vector containing the base name of each scope, starting with the outermost scope.
