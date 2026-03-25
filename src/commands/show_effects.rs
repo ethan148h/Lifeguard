@@ -5,35 +5,28 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-// Dump effects for a single python file (.py or .pyi).
-//
-// $ buck run :show_effects <path_to_file.py>
-// $ buck run :show_effects <path_to_file.pyi>
-
 use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use lifeguard::analyzer;
-use lifeguard::debug::print_module_imports_map;
-use lifeguard::imports::ImportGraph;
-use lifeguard::module_parser;
-use lifeguard::pyrefly::module_name::ModuleName;
-use lifeguard::pyrefly::sys_info::SysInfo;
-use lifeguard::source_map::ModuleProvider;
-use lifeguard::test_lib::TestSources;
-use lifeguard::traits::SysInfoExt;
 use ruff_python_ast::PySourceType;
 
+use crate::analyzer;
+use crate::debug::print_module_imports_map;
+use crate::imports::ImportGraph;
+use crate::module_parser;
+use crate::pyrefly::module_name::ModuleName;
+use crate::pyrefly::sys_info::SysInfo;
+use crate::source_map::ModuleProvider;
+use crate::test_lib::TestSources;
+use crate::traits::SysInfoExt;
+
 #[derive(Parser)]
-struct Args {
+pub struct ShowEffectsArgs {
     input_file: PathBuf,
 }
 
-fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
-
-    let args = Args::parse();
+pub fn run(args: ShowEffectsArgs) -> Result<()> {
     let module_name = ModuleName::from_str("current_module");
     let path = args.input_file;
     let source = std::fs::read_to_string(&path)?;

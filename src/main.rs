@@ -13,6 +13,7 @@ use clap::ArgAction;
 use clap::Parser;
 use clap::Subcommand;
 use lifeguard::commands::run_tree::RunTreeArgs;
+use lifeguard::commands::show_effects::ShowEffectsArgs;
 use lifeguard::debug::report_peak_memory;
 use lifeguard::runner::Options;
 use lifeguard::runner::process_source_map;
@@ -61,6 +62,8 @@ struct Cli {
 enum Commands {
     /// Analyze all Python files in a directory tree
     RunTree(RunTreeArgs),
+    /// Dump effects for a single Python file (.py or .pyi)
+    ShowEffects(ShowEffectsArgs),
 }
 
 fn run_analyze(args: Cli) -> Result<()> {
@@ -124,6 +127,7 @@ fn main() -> Result<()> {
 
     match args.command {
         Some(Commands::RunTree(args)) => lifeguard::commands::run_tree::run(args),
+        Some(Commands::ShowEffects(args)) => lifeguard::commands::show_effects::run(args),
         None => run_analyze(args),
     }
 }

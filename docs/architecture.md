@@ -59,7 +59,7 @@ AST parsing is on-demand — modules are parsed as needed during import graph co
 
 **Binary utilities**:
 - `commands/run_tree.rs` - Subcommand to analyze a directory tree without Buck
-- `bin/show_effects.rs` - CLI to dump effects for a single Python file
+- `commands/show_effects.rs` - Subcommand to dump effects for a single Python file
 
 **Local pyrefly forks**:
 - `pyrefly/definitions.rs` - Local fork of pyrefly's definitions module (with `LIFEGUARD:` markers)
