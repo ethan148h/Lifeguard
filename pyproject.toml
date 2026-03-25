@@ -1,0 +1,36 @@
+[build-system]
+requires = ["maturin>=1.10.2,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+bindings = "bin"
+manifest-path = "src/Cargo.toml"
+python-source = "python"
+module-name = "lifeguard_lazy_imports"
+strip = false
+include = ["rust-toolchain"]
+
+[project]
+name = "lifeguard-lazy-imports"
+description = "A fast analyzer for Python lazy imports safety"
+dynamic = ["version"]
+readme = "README.md"
+license = "MIT"
+requires-python = ">= 3.12"
+keywords = ["lazy-imports", "python", "static-analysis"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.14",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Topic :: Software Development",
+]
+
+[project.urls]
+Homepage = "https://github.com/facebook/Lifeguard"
+Repository = "https://github.com/facebook/Lifeguard"
