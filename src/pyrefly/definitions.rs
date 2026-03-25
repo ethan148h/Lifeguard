@@ -163,14 +163,15 @@ impl DunderAllEntry {
         match x {
             Expr::List(x) => x.elts.iter().filter_map(DunderAllEntry::as_item).collect(),
             Expr::Tuple(x) => x.elts.iter().filter_map(DunderAllEntry::as_item).collect(),
-            Expr::Attribute(ExprAttribute { value, attr, .. })
-                if let Expr::Name(name) = &**value
-                    && attr.id == dunder::ALL =>
-            {
-                vec![DunderAllEntry::Module(
-                    name.range,
-                    ModuleName::from_name(&name.id),
-                )]
+            Expr::Attribute(ExprAttribute { value, attr, .. }) if attr.id == dunder::ALL => {
+                if let Expr::Name(name) = &**value {
+                    vec![DunderAllEntry::Module(
+                        name.range,
+                        ModuleName::from_name(&name.id),
+                    )]
+                } else {
+                    Vec::new()
+                }
             }
             _ => Vec::new(),
         }

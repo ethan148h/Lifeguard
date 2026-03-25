@@ -4,9 +4,7 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
-#![feature(const_type_name)]
 #![feature(box_patterns)]
-#![feature(if_let_guard)]
 
 pub mod analyzer;
 pub mod bindings;
