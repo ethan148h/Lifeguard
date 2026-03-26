@@ -91,6 +91,7 @@ impl Graph {
     }
 
     /// Check if an edge exists in the graph.
+    #[cfg(test)]
     pub(crate) fn has_edge(&self, from: &ModuleName, to: &ModuleName) -> bool {
         let Some(&p) = self.nodes.get(from) else {
             return false;
@@ -272,5 +273,104 @@ mod tests {
         let mut names = g.cycle_names(&cycles[0]).collect::<Vec<_>>();
         names.sort();
         assert_eq!(names, vec![a, b, c]);
+    }
+
+    #[test]
+    fn test_self_loop_not_detected_as_cycle() {
+        let mut g = Graph::new();
+        let a = ModuleName::from_str("a");
+        g.add_node(&a);
+        g.add_edge(&a, &a);
+        // Self-loops form a trivial SCC (len 1), filtered out by find_cycles
+        assert!(
+            g.find_cycles().is_empty(),
+            "self-loop should not be reported as a cycle"
+        );
+    }
+
+    #[test]
+    fn test_self_loop_appears_in_neighbors() {
+        let mut g = Graph::new();
+        let a = ModuleName::from_str("a");
+        g.add_node(&a);
+        g.add_edge(&a, &a);
+        let neighbors: Vec<_> = g.neighbors(&a).collect();
+        assert_eq!(neighbors.len(), 1, "self-loop should appear in neighbors");
+        assert_eq!(neighbors[0], &a);
+    }
+
+    #[test]
+    fn test_large_cycle_four_nodes() {
+        let mut g = Graph::new();
+        let names: Vec<_> = ["w", "x", "y", "z"]
+            .iter()
+            .map(|s| ModuleName::from_str(s))
+            .collect();
+        for n in &names {
+            g.add_node(n);
+        }
+        // w -> x -> y -> z -> w
+        for i in 0..names.len() {
+            g.add_edge(&names[i], &names[(i + 1) % names.len()]);
+        }
+        let cycles = g.find_cycles();
+        assert_eq!(cycles.len(), 1, "single 4-node ring should be one SCC");
+        assert_eq!(cycles[0].len(), 4);
+    }
+
+    #[test]
+    fn test_has_edge() {
+        let mut g = Graph::new();
+        let a = ModuleName::from_str("a");
+        let b = ModuleName::from_str("b");
+        let c = ModuleName::from_str("c");
+        g.add_node(&a);
+        g.add_node(&b);
+        g.add_node(&c);
+        g.add_edge(&a, &b);
+        assert!(g.has_edge(&a, &b));
+        assert!(!g.has_edge(&b, &a), "edge is directed");
+        assert!(!g.has_edge(&a, &c), "no edge added between a and c");
+    }
+
+    #[test]
+    fn test_has_edge_unknown_nodes() {
+        let g = Graph::new();
+        let a = ModuleName::from_str("a");
+        let b = ModuleName::from_str("b");
+        assert!(!g.has_edge(&a, &b), "unknown nodes should return false");
+    }
+
+    #[test]
+    fn test_with_capacity() {
+        let mut g = Graph::with_capacity(10, 20);
+        let a = ModuleName::from_str("a");
+        let b = ModuleName::from_str("b");
+        g.add_node(&a);
+        g.add_node(&b);
+        g.add_edge(&a, &b);
+        assert!(
+            g.has_edge(&a, &b),
+            "graph with pre-allocated capacity should work normally"
+        );
+    }
+
+    #[test]
+    fn test_add_node_is_idempotent() {
+        let mut g = Graph::new();
+        let a = ModuleName::from_str("a");
+        let ix1 = g.add_node(&a);
+        let ix2 = g.add_node(&a);
+        assert_eq!(ix1, ix2, "adding same node twice should return same index");
+    }
+
+    #[test]
+    fn test_contains() {
+        let mut g = Graph::new();
+        let a = ModuleName::from_str("a");
+        let b = ModuleName::from_str("b");
+        g.add_node(&a);
+        assert!(g.contains(&a));
+        assert!(!g.contains(&b));
     }
 }
