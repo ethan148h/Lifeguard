@@ -186,7 +186,7 @@ impl<'a> SourceAnalyzer<'a> {
             }
         }
         // Check obj as a potentially dangerous assignment target (even though obj.attr is the
-        // actual assingment target, we are still potentially modifying obj)
+        // actual assignment target, we are still potentially modifying obj)
         self.check_assign_target(obj, output);
     }
 

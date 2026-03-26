@@ -101,7 +101,7 @@ The JSON written to `output.json` contains two top-level keys:
 - **`LOAD_IMPORTS_EAGERLY`** — a list of modules where lazy imports are disabled
   entirely. These modules had constructs that make static analysis impossible
   (e.g. `exec()` calls, custom `__del__` finalizers). See
-  `docs/excluding_set.md` for the exact cases.
+  `docs/load_imports_eagerly.md` for the exact cases.
 - **`LAZY_ELIGIBLE`** — a dict mapping each safe module to the list of
   dependencies that must be imported eagerly when that module is loaded lazily.
   - An empty list (like `safe_module` above) means the module is fully safe

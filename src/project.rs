@@ -571,7 +571,7 @@ fn compute_implicit_imports_for_module(
     let mut has_unresolved_imports = false;
     for (scope, imports) in called_imports_map {
         for curr_import in imports {
-            // if the import statment exists in the scope of where the import is
+            // if the import statement exists in the scope of where the import is
             // called or in the module level then it's loaded
             if module_level_import.contains(curr_import)
                 || pending_imports_map

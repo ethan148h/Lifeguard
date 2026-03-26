@@ -46,7 +46,7 @@ mod tests {
 
     #[test]
     fn test_catch_implicit_import_function_in_other_file() {
-        // If qux is analzyed first foo.bar is not reported as an implicit
+        // If qux is analyzed first foo.bar is not reported as an implicit
         // import (foo.bar is unknown)
         let __main__ = r#"
             import waldo
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn test_catch_implicit_import_function_in_other_unsafe_file() {
-        // If qux is analzyed first foo.bar is not reported as an implicit
+        // If qux is analyzed first foo.bar is not reported as an implicit
         // import (foo.bar is unknown)
         let __main__ = r#"
             from qux import resolver
