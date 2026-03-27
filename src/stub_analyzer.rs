@@ -48,13 +48,12 @@ pub fn analyze(
 
 /// Processes a stub file that's represented as a string.  Used for the bundled stubs, doesn't take
 /// in an import graph.
-pub fn analyze_str(mod_name: ModuleName, body: &str) -> AnalyzedModule {
+pub fn analyze_str(mod_name: ModuleName, body: &str, stubs: &Stubs) -> AnalyzedModule {
     let parsed_module = parse_pyi(body, mod_name, false);
     let import_graph = ImportGraph::new();
     let exports = Exports::empty();
-    let stubs = Stubs::new();
     let sys_info = SysInfo::lg_default();
-    analyze(&parsed_module, &exports, &import_graph, &stubs, &sys_info)
+    analyze(&parsed_module, &exports, &import_graph, stubs, &sys_info)
 }
 
 /// Implementation of Analyzer for stub files (.pyi).

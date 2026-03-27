@@ -39,7 +39,7 @@ impl Stubs {
     pub fn get(&self, key: &ModuleName) -> Option<&AnalyzedModule> {
         let raw = self.raw.get(key)?;
         let parsed = self.parsed.get(key)?;
-        let ret = parsed.get_or_init(|| stub_analyzer::analyze_str(*key, raw));
+        let ret = parsed.get_or_init(|| stub_analyzer::analyze_str(*key, raw, self));
         Some(ret)
     }
 
