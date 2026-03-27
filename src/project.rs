@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 use std::mem;
+use std::sync::LazyLock;
 
 use ahash::AHashMap;
 use ahash::AHashSet;
@@ -500,6 +501,15 @@ fn build_init_module_map(analysis_map: &AnalysisMap) -> HashMap<ModuleName, Modu
         .collect()
 }
 
+/// Submodules pre-loaded into `sys.modules` during Python startup.
+/// These are always available at runtime, so accessing them is never an implicit import.
+static PYTHON_STARTUP_SUBMODULES: LazyLock<AHashSet<ModuleName>> = LazyLock::new(|| {
+    ["encodings.aliases", "encodings.utf_8", "os.path"]
+        .iter()
+        .map(|s| ModuleName::from_str(s))
+        .collect()
+});
+
 fn compute_implicit_imports_for_module(
     curr_module: &ModuleName,
     ctx: &ImplicitImportContext,
@@ -617,7 +627,9 @@ fn compute_implicit_imports_for_module(
     called_imports_map
         .values()
         .flatten()
-        .filter(|imp| !non_implicit_imports.contains(imp))
+        .filter(|imp| {
+            !non_implicit_imports.contains(imp) && !PYTHON_STARTUP_SUBMODULES.contains(imp)
+        })
         .copied()
         .collect()
 }

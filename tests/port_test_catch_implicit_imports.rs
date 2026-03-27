@@ -382,8 +382,7 @@ mod tests {
         "#;
         let modules = vec![("__main__", __main__)];
 
-        // TODO: We think os.path is an implicit import because of how we have set up os/path.pyi
-        let implicit_imports = vec![("__main__", vec!["os.path"])];
+        let implicit_imports = Vec::new();
         check_errors_and_implicit_imports(modules, implicit_imports);
     }
 
@@ -871,6 +870,20 @@ mod tests {
             ("foo.bar", foo_bar),
             ("foo.bar.baz", foo_bar_baz),
         ];
+
+        let implicit_imports = Vec::new();
+        check_errors_and_implicit_imports(modules, implicit_imports);
+    }
+
+    #[test]
+    fn test_no_implicit_import_for_startup_module() {
+        // encodings.aliases is pre-loaded in sys.modules at Python startup,
+        // so accessing it as a submodule should not be flagged as implicit.
+        let __main__ = r#"
+            import encodings
+            encodings.aliases
+        "#;
+        let modules = vec![("__main__", __main__)];
 
         let implicit_imports = Vec::new();
         check_errors_and_implicit_imports(modules, implicit_imports);
