@@ -475,20 +475,15 @@ register("my_item")  # E: unsafe-function-call
     }
 
     // =========================================================================
-    // Future work: mutation classification (ignored until implemented)
+    // Mutation classification: non-mutating builtin methods on params
     //
-    // Non-mutating method calls on params should not trigger errors.
-    // The stub system already classifies methods as Mutation via
-    // may_mutate_receiver(). These should pass once that logic is applied
-    // to param method calls.
+    // When a param has no type annotation, method calls are checked against
+    // all builtin types that define the method. If none have a Mutation
+    // effect, both MethodCall and ParamMethodCall are suppressed.
     // =========================================================================
 
     #[test]
-    #[ignore] // TODO(T237092592): Use mutation classification for param methods
     fn test_non_mutating_method_on_param_is_safe() {
-        // list.copy() does not mutate the receiver.
-        // Currently: x.copy() is an unknown method → function is unsafe.
-        // Desired: classified as non-mutating → safe.
         let code = r#"
 from foo import A
 
@@ -501,9 +496,7 @@ f(A)
     }
 
     #[test]
-    #[ignore] // TODO(T237092592): Use mutation classification for param methods
     fn test_dict_get_on_param_is_safe() {
-        // dict.get() does not mutate the receiver
         let code = r#"
 from foo import A
 
@@ -516,9 +509,7 @@ f(A)
     }
 
     #[test]
-    #[ignore] // TODO(T237092592): Use mutation classification for param methods
     fn test_list_index_on_param_is_safe() {
-        // list.index() is a read-only operation
         let code = r#"
 from foo import A
 
@@ -528,6 +519,44 @@ def f(items):
 f(A)
 "#;
         check(code);
+    }
+
+    #[test]
+    fn test_mutating_builtin_method_on_param_is_unsafe() {
+        // list.append() is a mutating method → function is unsafe
+        let code = r#"
+from foo import A
+
+def f(x):
+    x.append(1)
+
+f(A)  # E: imported-var-argument  # E: unsafe-function-call
+"#;
+        check(code);
+    }
+
+    #[test]
+    fn test_custom_class_copy_suppressed_for_untyped_param() {
+        // When the param has no type annotation, the builtin-safe heuristic
+        // suppresses copy() since it's safe across all builtin types. This is
+        // a known false negative for custom classes with side-effecting copy().
+        let registry_mod = r#"
+class Registry:
+    def copy(self):
+        print("side effect!")
+        return Registry()
+
+registry = Registry()
+"#;
+        let main_mod = r#"
+from registry_mod import registry
+
+def f(x):
+    x.copy()
+
+f(registry)
+"#;
+        check_all(vec![("registry_mod", registry_mod), ("main_mod", main_mod)]);
     }
 
     // =========================================================================

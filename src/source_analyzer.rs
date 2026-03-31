@@ -517,15 +517,32 @@ impl<'a> SourceAnalyzer<'a> {
             // Otherwise, we can't resolve the attr so stick with fname
             _ => fname,
         };
-        let eff = Effect::with_data(EffectKind::MethodCall, fname, range, data);
-        self.add_effect(eff, output);
+
+        // For param receivers with unknown type, check if the method is
+        // known-safe across all builtin types (e.g. copy, get, index).
+        // Only applies to builtins — user-defined classes with same-named
+        // methods are not affected since their types aren't in the builtins stub.
+        let is_safe_builtin_method = res.definition.is_param()
+            && typ.is_none()
+            && self.info.stubs.is_method_safe_in_builtins(&attr.id);
+
+        if !is_safe_builtin_method {
+            let eff = Effect::with_data(EffectKind::MethodCall, fname, range, data);
+            self.add_effect(eff, output);
+        }
 
         self.check_indirectly_called_method(fname, res, attr, output);
 
-        if res.definition.is_param() {
-            let param_name = ModuleName::from_name(&res.name);
-            let eff = Effect::new(EffectKind::ParamMethodCall, param_name, range);
-            self.add_effect(eff, output);
+        if res.definition.is_param() && !is_safe_builtin_method {
+            let is_mutating = match typ {
+                Some(t) => self.may_mutate_receiver(t, &attr.id),
+                None => true,
+            };
+            if is_mutating {
+                let param_name = ModuleName::from_name(&res.name);
+                let eff = Effect::new(EffectKind::ParamMethodCall, param_name, range);
+                self.add_effect(eff, output);
+            }
         };
 
         // Calling a mutating method (e.g. list.append) on a module-level variable from a
