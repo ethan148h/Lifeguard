@@ -92,6 +92,8 @@ pub enum EffectKind {
     Mutation,
     // Marks a dunder method.
     Dunder,
+    // Call has more than 64 positional arguments, exceeding the tracking bitset.
+    TooManyArgs,
 }
 
 impl ErrorString for EffectKind {

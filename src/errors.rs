@@ -91,6 +91,9 @@ pub enum ErrorKind {
     /// Used by stubs to indicate that a function is unsafe, if we don't have a more specific effect
     /// to annotate it with.  Unknown effects are always treated as safety errors.
     UnknownEffects,
+
+    /// A call has more than 64 positional arguments, exceeding the tracking bitset.
+    TooManyArgs,
 }
 
 impl ErrorKind {
@@ -175,6 +178,7 @@ impl SafetyError {
             EffectKind::UnknownDecoratorCall => Some(ErrorKind::UnknownDecoratorCall),
             EffectKind::UnknownEffects => Some(ErrorKind::UnknownEffects),
             EffectKind::UnknownObject => Some(ErrorKind::UnknownObject),
+            EffectKind::TooManyArgs => Some(ErrorKind::TooManyArgs),
             _ => None,
         }
         .map(|kind| Self {

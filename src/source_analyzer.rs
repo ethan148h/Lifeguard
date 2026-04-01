@@ -293,6 +293,15 @@ impl<'a> SourceAnalyzer<'a> {
     }
 
     fn check_call_args(&self, args: &Arguments, output: &mut ModuleEffects) -> CallData {
+        if args.args.len() > 64 {
+            let eff = Effect::new(
+                EffectKind::TooManyArgs,
+                ModuleName::from_str(""),
+                args.range(),
+            );
+            self.add_effect(eff, output);
+        }
+
         let mut has_unsafe = false;
         let mut unsafe_indices: u64 = 0;
         let mut unsafe_keyword_names = Vec::new();

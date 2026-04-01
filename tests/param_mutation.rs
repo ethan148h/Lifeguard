@@ -728,6 +728,48 @@ f(A, y=B)  # E: imported-var-argument
     }
 
     // =========================================================================
+    // Too many positional args: >64 args exceeds the tracking bitset
+    // =========================================================================
+
+    #[test]
+    fn test_too_many_args() {
+        // A call with more than 64 positional args triggers a too-many-args error.
+        let args = (0..65)
+            .map(|i| format!("{}", i))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let code = format!(
+            r#"
+def f(*args):
+    pass
+
+f({})  # E: too-many-args
+"#,
+            args
+        );
+        check(&code);
+    }
+
+    #[test]
+    fn test_64_args_is_fine() {
+        // Exactly 64 positional args is within the bitset capacity — no error.
+        let args = (0..64)
+            .map(|i| format!("{}", i))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let code = format!(
+            r#"
+def f(*args):
+    pass
+
+f({})
+"#,
+            args
+        );
+        check(&code);
+    }
+
+    // =========================================================================
     // Future work: advanced patterns (ignored until implemented)
     // =========================================================================
 
