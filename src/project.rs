@@ -714,6 +714,7 @@ pub fn analyze_all(
 struct Call<'a> {
     caller_module: &'a ModuleName,
     effect: &'a Effect,
+    func: ModuleName,
     stack: CallStack,
 }
 
@@ -895,6 +896,7 @@ impl ProjectInfo {
                 let mut call = Call {
                     caller_module: mod_name,
                     effect: eff,
+                    func: eff.name,
                     stack: CallStack::new(*scope),
                 };
                 self.check_call_safety(&mut call, state, true)?;
@@ -910,6 +912,7 @@ impl ProjectInfo {
                             let mut call = Call {
                                 caller_module: mod_name,
                                 effect: eff,
+                                func: eff.name,
                                 stack: CallStack::new(*scope),
                             };
                             self.check_call_safety(&mut call, state, true)?;
@@ -929,7 +932,7 @@ impl ProjectInfo {
     }
 
     fn can_resolve_call(&self, call: &Call) -> bool {
-        self.contains_callable(&call.effect.name)
+        self.contains_callable(&call.func)
     }
 
     fn check_unknown_call(&self, call: &Call) -> Result<SafetyError> {
@@ -981,47 +984,36 @@ impl ProjectInfo {
     }
 
     fn check_call(&self, call: &mut Call, state: &GlobalAnalysisState) -> Result<bool> {
-        let called_func = &call.effect.name;
-        if self.classes.contains(called_func) {
+        if self.classes.contains(&call.func) {
             // This is a class constructor
-            self.check_constructor_call(call, called_func, state)
+            self.check_constructor_call(call, state)
         } else {
-            self.check_call_body(call, called_func, state)
+            self.check_call_body(call, state)
         }
     }
 
-    fn check_constructor_call(
-        &self,
-        call: &mut Call,
-        cls_name: &ModuleName,
-        state: &GlobalAnalysisState,
-    ) -> Result<bool> {
+    fn check_constructor_call(&self, call: &mut Call, state: &GlobalAnalysisState) -> Result<bool> {
         let mut ret = true;
+        let cls_name = call.func;
         // Check the metaclass
-        let cls = self.classes.lookup(cls_name).unwrap();
+        let cls = self.classes.lookup(&cls_name).unwrap();
         if let Some(mcls) = cls.metaclass {
-            let new_func = &mcls.append_str("__new__");
-            ret &= self.check_call_body(call, new_func, state)?;
-            let init_func = &mcls.append_str("__init__");
-            ret &= self.check_call_body(call, init_func, state)?;
+            call.func = mcls.append_str("__new__");
+            ret &= self.check_call_body(call, state)?;
+            call.func = mcls.append_str("__init__");
+            ret &= self.check_call_body(call, state)?;
         }
         // Check __init__
         // TODO: Look up __init__ in the MRO
-        let func = &cls_name.append_str("__init__");
-        ret &= self.check_call_body(call, func, state)?;
+        call.func = cls_name.append_str("__init__");
+        ret &= self.check_call_body(call, state)?;
         // Check __post_init__ (called by dataclass-generated __init__)
-        let post_init_func = &cls_name.append_str("__post_init__");
-        ret &= self.check_call_body(call, post_init_func, state)?;
+        call.func = cls_name.append_str("__post_init__");
+        ret &= self.check_call_body(call, state)?;
         Ok(ret)
     }
 
-    fn check_call_params(
-        &self,
-        call: &Call,
-        func: &ModuleName,
-        effs: &[Effect],
-        state: &GlobalAnalysisState,
-    ) {
+    fn check_call_params(&self, call: &Call, effs: &[Effect], state: &GlobalAnalysisState) {
         let EffectData::Call(ref call_data) = call.effect.data else {
             return;
         };
@@ -1029,6 +1021,7 @@ impl ProjectInfo {
             return;
         }
 
+        let func = &call.func;
         let func_module = self.functions.get(func).copied().unwrap_or(*func);
         let defs = self.analysis_map.get(&func_module).map(|m| &m.definitions);
 
@@ -1068,31 +1061,27 @@ impl ProjectInfo {
         }
     }
 
-    fn check_call_body(
-        &self,
-        call: &mut Call,
-        func: &ModuleName,
-        state: &GlobalAnalysisState,
-    ) -> Result<bool> {
+    fn check_call_body(&self, call: &mut Call, state: &GlobalAnalysisState) -> Result<bool> {
+        let func = call.func;
         // We need to mark errors in the module containing the called function, not the caller's
         // module.
-        let Some(call_module) = self.functions.get(func) else {
+        let Some(call_module) = self.functions.get(&func) else {
             // This function is not in the function table so we cannot find effects for it.
             return Ok(true);
         };
-        let Some(effs) = self.effect_table.get(func) else {
+        let Some(effs) = self.effect_table.get(&func) else {
             // This function has no effects and is therefore safe
-            state.mark_safe(func);
+            state.mark_safe(&func);
             return Ok(true);
         };
 
         // Call param mutation is orthogonal to function safety; we always need to check for it
         // even if the function safety is cached.
-        self.check_call_params(call, func, effs, state);
+        self.check_call_params(call, effs, state);
 
         let is_cross_module_call = *call.caller_module != *call_module;
 
-        if let Some(safe) = state.function_safety.get(func).map(|r| *r) {
+        if let Some(safe) = state.function_safety.get(&func).map(|r| *r) {
             let ret = match safe {
                 FunctionSafety::Safe => true,
                 FunctionSafety::Unsafe => false,
@@ -1106,23 +1095,24 @@ impl ProjectInfo {
             if SafetyError::from_effect(eff).is_some() {
                 // We have an effect that translates unconditionally to an error, so mark the
                 // function unsafe
-                state.mark_unsafe(func);
+                state.mark_unsafe(&func);
                 ret = false;
             } else if eff.kind.is_runnable() {
                 if call.stack.contains(&eff.name) {
                     // We have a recursive function call; mark it unsafe
-                    state.mark_unsafe(func);
+                    state.mark_unsafe(&func);
                     ret = false;
                 } else {
                     call.stack.push(eff.name);
                     let mut child_call = Call {
                         caller_module: call.caller_module,
                         effect: eff,
+                        func: eff.name,
                         stack: std::mem::take(&mut call.stack),
                     };
                     if !self.check_call_safety(&mut child_call, state, false)? {
                         // This function has called an unsafe function; mark it unsafe.
-                        state.mark_unsafe(func);
+                        state.mark_unsafe(&func);
                         // Do not return at the first error because we might miss some transitive
                         // calls.
                         ret = false;
@@ -1136,7 +1126,7 @@ impl ProjectInfo {
                         // We mark this call as unsafe but do not add an error
                         // as this is not call is not happening at global scope.
                         // If this callable is called, we will add the error there.
-                        state.mark_unsafe(func);
+                        state.mark_unsafe(&func);
                         ret = false;
                     }
                     EffectKind::GlobalVarAssign | EffectKind::GlobalVarMutation => {
@@ -1146,10 +1136,10 @@ impl ProjectInfo {
                         // cached state first.
                         let is_already_unsafe = state
                             .function_safety
-                            .get(func)
+                            .get(&func)
                             .is_some_and(|v| *v == FunctionSafety::Unsafe);
                         if !is_already_unsafe {
-                            state.mark_unsafe_if_imported(func);
+                            state.mark_unsafe_if_imported(&func);
                             if is_cross_module_call {
                                 ret = false;
                             }
@@ -1161,8 +1151,8 @@ impl ProjectInfo {
         }
 
         // We haven't detected any unsafe behaviour
-        if state.function_safety.get(func).is_none() {
-            state.mark_safe(func);
+        if state.function_safety.get(&func).is_none() {
+            state.mark_safe(&func);
         }
         Ok(ret)
     }
