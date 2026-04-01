@@ -115,6 +115,8 @@ impl Iterator for ParentIter<'_> {
 }
 
 pub trait ModuleNameExt {
+    fn empty() -> Self;
+
     fn concat(&self, other: &Self) -> Self;
 
     fn append_str(&self, other: &str) -> Self;
@@ -129,6 +131,10 @@ pub trait ModuleNameExt {
 }
 
 impl ModuleNameExt for ModuleName {
+    fn empty() -> Self {
+        Self::from_str("")
+    }
+
     fn concat(&self, other: &Self) -> Self {
         self.append_str(other.as_str())
     }

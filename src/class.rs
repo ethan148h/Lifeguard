@@ -9,6 +9,8 @@ use ahash::AHashMap;
 use pyrefly_python::module_name::ModuleName;
 use ruff_python_ast::name::Name;
 
+use crate::traits::ModuleNameExt;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum FieldKind {
     InstanceVar,
@@ -43,7 +45,7 @@ impl Class {
     pub fn empty(module: ModuleName) -> Self {
         Self {
             module,
-            name: ModuleName::from_str(""),
+            name: ModuleName::empty(),
             decorators: vec![],
             bases: vec![],
             metaclass: None,

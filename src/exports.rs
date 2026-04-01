@@ -24,6 +24,7 @@ use crate::pyrefly::definitions::DefinitionStyle;
 use crate::pyrefly::definitions::Definitions;
 use crate::pyrefly::definitions::DunderAllEntry;
 use crate::pyrefly::sys_info::SysInfo;
+use crate::traits::ModuleNameExt;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ExportType {
@@ -53,7 +54,7 @@ impl Attribute {
 
     /// Split a fully-qualified ModuleName into module (parent) and attr (last component).
     pub fn from_module_name(name: &ModuleName) -> Self {
-        let module = name.parent().unwrap_or_else(|| ModuleName::from_str(""));
+        let module = name.parent().unwrap_or_else(ModuleName::empty);
         let components = name.components();
         let attr = components
             .last()

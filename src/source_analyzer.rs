@@ -294,11 +294,7 @@ impl<'a> SourceAnalyzer<'a> {
 
     fn check_call_args(&self, args: &Arguments, output: &mut ModuleEffects) -> CallData {
         if args.args.len() > 64 {
-            let eff = Effect::new(
-                EffectKind::TooManyArgs,
-                ModuleName::from_str(""),
-                args.range(),
-            );
+            let eff = Effect::new(EffectKind::TooManyArgs, ModuleName::empty(), args.range());
             self.add_effect(eff, output);
         }
 
@@ -1092,7 +1088,7 @@ impl<'a> SourceAnalyzer<'a> {
                 .exports
                 .get_re_export(&exported_name)
                 .is_some_and(|(v, r)| {
-                    v.module == ModuleName::from_str("") && v.attr.is_empty() && r != &x.range
+                    v.module == ModuleName::empty() && v.attr.is_empty() && r != &x.range
                 })
             {
                 let eff = Effect::new(
@@ -1123,7 +1119,7 @@ impl<'a> SourceAnalyzer<'a> {
                 .exports
                 .get_re_export(&exported_name)
                 .is_some_and(|(v, r)| {
-                    v.module == ModuleName::from_str("") && v.attr.is_empty() && r != &x.range
+                    v.module == ModuleName::empty() && v.attr.is_empty() && r != &x.range
                 })
             {
                 let eff = Effect::new(

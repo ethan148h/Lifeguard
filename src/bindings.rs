@@ -31,6 +31,7 @@ use crate::module_info::get_import_module_state_from_def;
 use crate::module_parser::ParsedModule;
 use crate::traits::DefinitionExt;
 use crate::traits::ExprExt;
+use crate::traits::ModuleNameExt;
 
 // The value a name is bound to
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -344,7 +345,7 @@ impl<'a, 'b> AliasTableBuilder<'a, 'b> {
     fn import_from(&mut self, x: &StmtImportFrom) {
         let from_mod = match &x.module {
             Some(m) => ModuleName::from_name(&m.id),
-            None => ModuleName::from_str(""),
+            None => ModuleName::empty(),
         };
         for name in &x.names {
             if let Some(asname) = &name.asname {

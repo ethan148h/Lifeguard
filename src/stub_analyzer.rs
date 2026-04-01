@@ -31,6 +31,7 @@ use crate::module_parser::parse_pyi;
 use crate::pyrefly::sys_info::SysInfo;
 use crate::stubs::Stubs;
 use crate::traits::ExprExt;
+use crate::traits::ModuleNameExt;
 use crate::traits::SysInfoExt;
 
 /// Main entry point for the stub analyzer.
@@ -71,7 +72,7 @@ impl<'a> StubAnalyzer<'a> {
         self.stmts(&func_def.body, &mut out);
         if out.effects.is_empty() {
             let kind = EffectKind::UnknownEffects;
-            let name = ModuleName::from_str("");
+            let name = ModuleName::empty();
             out.add_effect(self.cursor.scope(), Effect::new(kind, name, func_def.range));
         }
         self.cursor.exit_scope();
@@ -87,7 +88,7 @@ impl<'a> StubAnalyzer<'a> {
         let box args = &call.arguments.args;
         let arg = match &args {
             [Expr::StringLiteral(e), ..] => Some(ModuleName::from_str(e.value.to_str())),
-            [] => Some(ModuleName::from_str("")),
+            [] => Some(ModuleName::empty()),
             _ => None,
         }?;
         Some(Effect::new(kind, arg, call.range))
