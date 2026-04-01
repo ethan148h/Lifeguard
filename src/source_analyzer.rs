@@ -291,9 +291,12 @@ impl<'a> SourceAnalyzer<'a> {
         ret
     }
 
-    fn check_call_args(&self, args: &Arguments, output: &mut ModuleEffects) -> (bool, u64) {
+    fn check_call_args(&self, args: &Arguments, output: &mut ModuleEffects) -> CallData {
         let mut has_unsafe = false;
         let mut unsafe_indices: u64 = 0;
+        let mut unsafe_keyword_names = Vec::new();
+        let mut has_unsafe_kwargs_expansion = false;
+
         for (i, arg) in args.args.as_ref().iter().enumerate() {
             if self.check_call_arg(arg, output) {
                 has_unsafe = true;
@@ -303,9 +306,25 @@ impl<'a> SourceAnalyzer<'a> {
             }
         }
         for arg in args.keywords.as_ref() {
-            has_unsafe |= self.check_call_arg(&arg.value, output);
+            if self.check_call_arg(&arg.value, output) {
+                has_unsafe = true;
+                match &arg.arg {
+                    Some(ident) => {
+                        unsafe_keyword_names.push(ModuleName::from_str(ident.as_str()));
+                    }
+                    None => {
+                        // **kwargs expansion — can't determine specific keywords
+                        has_unsafe_kwargs_expansion = true;
+                    }
+                }
+            }
         }
-        (has_unsafe, unsafe_indices)
+        CallData::new(
+            has_unsafe,
+            unsafe_indices,
+            unsafe_keyword_names,
+            has_unsafe_kwargs_expansion,
+        )
     }
 
     fn check_unresolved_call(
@@ -412,12 +431,9 @@ impl<'a> SourceAnalyzer<'a> {
         output: &mut ModuleEffects,
     ) {
         // Check the call arguments for imported variables
-        let mut has_unsafe_args = false;
-        let mut unsafe_arg_indices: u64 = 0;
+        let mut call_data = CallData::empty();
         if let Some(args) = args {
-            let (unsafe_flag, indices) = self.check_call_args(args, output);
-            has_unsafe_args = unsafe_flag;
-            unsafe_arg_indices = indices;
+            call_data = self.check_call_args(args, output);
         }
 
         if let Expr::Attribute(ExprAttribute { value, .. }) = func {
@@ -431,10 +447,7 @@ impl<'a> SourceAnalyzer<'a> {
         };
 
         output.called_functions.insert(fname);
-        let data = EffectData::Call(CallData {
-            has_unsafe_args,
-            unsafe_arg_indices,
-        });
+        let data = EffectData::Call(call_data);
 
         // Functions we have special-cased as safe.
         if manual_override::declared_safe(&fname) {
@@ -442,7 +455,7 @@ impl<'a> SourceAnalyzer<'a> {
         }
 
         // Check if this is a method call before checking if it's a function
-        if self.handle_method_call(func, &res, fname, range, data, output) {
+        if self.handle_method_call(func, &res, fname, range, data.clone(), output) {
             return;
         }
 

@@ -322,16 +322,16 @@ f(1, B)
     }
 
     #[test]
-    fn test_precise_match_keyword_arg_fallback() {
-        // Keyword args can't be precisely matched by index, so we fall back
-        // to the coarse check.
+    fn test_precise_match_keyword_arg() {
+        // Keyword args are now precisely matched by name.
+        // A is passed to y, but only x is mutated → safe.
         let code = r#"
 from foo import A
 
 def f(x, y):
     x.attr = 10
 
-f(y=A, x=1)  # E: imported-var-argument
+f(y=A, x=1)
 "#;
         check(code);
     }
@@ -560,6 +560,30 @@ f(registry)
     }
 
     // =========================================================================
+    // Mixed positional + keyword args: regression test for project.rs continue bug
+    //
+    // When a call has BOTH positional and keyword imported args, the positional
+    // check must NOT skip keyword matching on negative match.
+    // =========================================================================
+
+    #[test]
+    fn test_mixed_positional_and_keyword_only_keyword_mutated() {
+        // f mutates param `y` (keyword), imported var B passed to `y` by keyword.
+        // Imported var A is at positional index 0, but x is not mutated.
+        // The keyword match for y=B must fire even though positional check ran.
+        let code = r#"
+from foo import A
+from foo import B
+
+def f(x, y):
+    y.attr = True
+
+f(A, y=B)  # E: imported-var-argument
+"#;
+        check(code);
+    }
+
+    // =========================================================================
     // Future work: advanced patterns (ignored until implemented)
     // =========================================================================
 
@@ -615,9 +639,8 @@ f(A)  # E: imported-var-argument  # E: unsafe-function-call
     }
 
     #[test]
-    #[ignore] // TODO(T237092592): Precise keyword-to-param matching
     fn test_keyword_arg_precise_matching() {
-        // Keyword args should be matchable to specific params.
+        // Keyword args matched to specific params.
         // f mutates param `target`, imported var passed to `target` by keyword.
         let code = r#"
 from foo import A
@@ -631,10 +654,9 @@ f([], target=A)  # E: imported-var-argument  # E: unsafe-function-call
     }
 
     #[test]
-    #[ignore] // TODO(T237092592): Precise keyword-to-param matching
     fn test_keyword_arg_precise_matching_safe() {
         // f mutates param `target`, but the imported var is passed to `source`.
-        // Only unsafe-function-call should fire, not imported-var-argument.
+        // Only unsafe-function-call fires, not imported-var-argument.
         let code = r#"
 from foo import A
 

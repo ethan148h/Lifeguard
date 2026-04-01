@@ -357,7 +357,7 @@ def f(x, y, z):
     x.bar()
 
 f(1, A, 2)  # E: unsafe-function-call
-f(1, y=A, z=2)  # E: imported-var-argument  # E: unsafe-function-call
+f(1, y=A, z=2)  # E: unsafe-function-call
 "#;
         check(code);
     }

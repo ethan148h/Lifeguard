@@ -153,19 +153,79 @@ impl CallKind {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct CallData {
-    pub has_unsafe_args: bool,
-    pub unsafe_arg_indices: u64,
+    has_unsafe_args: bool,
+    unsafe_arg_indices: u64,
+    /// Names of keyword arguments that are imported variables.
+    unsafe_keyword_names: Vec<ModuleName>,
+    /// Set when a **kwargs expansion contains an imported variable,
+    /// meaning we can't determine which specific keywords are unsafe.
+    has_unsafe_kwargs_expansion: bool,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
+impl CallData {
+    pub fn new(
+        has_unsafe_args: bool,
+        unsafe_arg_indices: u64,
+        unsafe_keyword_names: Vec<ModuleName>,
+        has_unsafe_kwargs_expansion: bool,
+    ) -> Self {
+        Self {
+            has_unsafe_args,
+            unsafe_arg_indices,
+            unsafe_keyword_names,
+            has_unsafe_kwargs_expansion,
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            has_unsafe_args: false,
+            unsafe_arg_indices: 0,
+            unsafe_keyword_names: Vec::new(),
+            has_unsafe_kwargs_expansion: false,
+        }
+    }
+
+    pub fn has_unsafe_args(&self) -> bool {
+        self.has_unsafe_args
+    }
+
+    pub fn has_unsafe_arg_index(&self, idx: usize) -> bool {
+        idx < 64 && (self.unsafe_arg_indices & (1u64 << idx)) != 0
+    }
+
+    pub fn has_unsafe_keywords(&self) -> bool {
+        !self.unsafe_keyword_names.is_empty() || self.has_unsafe_kwargs_expansion
+    }
+
+    pub fn has_unsafe_keyword(&self, name: &str) -> bool {
+        self.has_unsafe_kwargs_expansion
+            || self
+                .unsafe_keyword_names
+                .iter()
+                .any(|kw| kw.as_str() == name)
+    }
+
+    pub fn has_precise_keyword_tracking(&self) -> bool {
+        !self.has_unsafe_kwargs_expansion
+    }
+
+    pub fn has_any_tracked_args(&self) -> bool {
+        self.unsafe_arg_indices != 0
+            || !self.unsafe_keyword_names.is_empty()
+            || self.has_unsafe_kwargs_expansion
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum EffectData {
     None,
     Call(CallData),
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct Effect {
     pub kind: EffectKind,
     pub name: ModuleName,
@@ -260,7 +320,7 @@ impl EffectTable {
     pub(crate) fn merge(&mut self, other: &Self) {
         for (name, effs) in &other.table {
             if let Some(val) = self.table.get_mut(name) {
-                val.extend(effs);
+                val.extend(effs.iter().cloned());
             } else {
                 self.table.insert(*name, effs.clone());
             };
@@ -297,10 +357,10 @@ impl EffectTable {
                 if !eff.name.as_str().is_empty() {
                     println!("        Name: {}", eff.name.as_str());
                 }
-                match eff.data {
+                match &eff.data {
                     EffectData::None => {}
                     EffectData::Call(call) => {
-                        println!("        UnsafeArgs: {}", call.has_unsafe_args);
+                        println!("        UnsafeArgs: {}", call.has_unsafe_args());
                     }
                 }
             }

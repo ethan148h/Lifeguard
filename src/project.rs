@@ -89,13 +89,15 @@ fn merge_all_effects(analysis_map: &AnalysisMap) -> EffectTable {
     analysis_map.par_iter().for_each(|(_, v)| {
         // Merge module effects
         for (scope, effects) in v.module_effects.effects.iter() {
-            concurrent_table.entry(*scope).or_default().extend(effects);
+            let effs = effects.iter().cloned();
+            concurrent_table.entry(*scope).or_default().extend(effs);
         }
 
         // Add nested scope effects to parent functions
         for (scope, effects) in v.module_effects.effects.iter() {
             if let Some(parent) = v.definitions.enclosing_functions.get(scope) {
-                concurrent_table.entry(*parent).or_default().extend(effects);
+                let effs = effects.iter().cloned();
+                concurrent_table.entry(*parent).or_default().extend(effs);
             }
         }
     });
@@ -1023,7 +1025,7 @@ impl ProjectInfo {
         let EffectData::Call(ref call_data) = call.effect.data else {
             return;
         };
-        if !call_data.has_unsafe_args {
+        if !call_data.has_unsafe_args() {
             return;
         }
 
@@ -1035,21 +1037,34 @@ impl ProjectInfo {
                 continue;
             }
             let param_name = eff.name.as_str();
-            if call_data.unsafe_arg_indices != 0 {
-                if let Some(param_idx) = defs.and_then(|d| d.get_param_index(func, param_name)) {
-                    if param_idx < 64 && (call_data.unsafe_arg_indices & (1u64 << param_idx)) != 0 {
-                        let err = SafetyError::new_from_effect(
-                            ErrorKind::ImportedVarArgument,
-                            call.effect,
-                        );
-                        state.add_error_to_module(call.caller_module, err);
-                    }
+
+            // Check positional args: does the mutated param's index match an unsafe arg?
+            if let Some(param_idx) = defs.and_then(|d| d.get_param_index(func, param_name)) {
+                if call_data.has_unsafe_arg_index(param_idx) {
+                    let err =
+                        SafetyError::new_from_effect(ErrorKind::ImportedVarArgument, call.effect);
+                    state.add_error_to_module(call.caller_module, err);
                     continue;
                 }
             }
-            // Fallback: if we can't resolve the param index, use coarse matching
-            let err = SafetyError::new_from_effect(ErrorKind::ImportedVarArgument, call.effect);
-            state.add_error_to_module(call.caller_module, err);
+
+            // Check keyword args: does the mutated param's name match an unsafe keyword?
+            if call_data.has_unsafe_keywords() {
+                if call_data.has_unsafe_keyword(param_name) {
+                    let err =
+                        SafetyError::new_from_effect(ErrorKind::ImportedVarArgument, call.effect);
+                    state.add_error_to_module(call.caller_module, err);
+                }
+                if call_data.has_precise_keyword_tracking() {
+                    continue;
+                }
+            }
+
+            // Fallback: no positional or keyword match resolved, use coarse matching
+            if !call_data.has_any_tracked_args() {
+                let err = SafetyError::new_from_effect(ErrorKind::ImportedVarArgument, call.effect);
+                state.add_error_to_module(call.caller_module, err);
+            }
         }
     }
 
